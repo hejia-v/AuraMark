@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AuraMark.Core\AuraMark.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
+  </ItemGroup>
+
+  <!-- Build frontend with Vite and copy dist into output folder -->
+  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition=" '$(CI)' != 'true' ">
+    <Message Text="Building AuraMark.Web..." Importance="high" />
+    <Exec Command="npm install" WorkingDirectory="..\AuraMark.Web" />
+    <Exec Command="npm.cmd run build" WorkingDirectory="..\AuraMark.Web" />
+  </Target>
+
+  <Target Name="CopyFrontend" AfterTargets="Build">
+    <ItemGroup>
+      <FrontendDist Include="..\AuraMark.Web\dist\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendDist)"
+          DestinationFiles="@(FrontendDist->'$(OutDir)EditorView\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

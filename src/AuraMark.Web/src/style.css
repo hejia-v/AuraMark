@@ -1,0 +1,26 @@
+:root{
+  --surface:#F9FAFB;
+  --text:#434C5E;
+  --primary:#81A1C1;
+}
+html,body{
+  height:100%;
+  margin:0;
+  background:var(--surface);
+  color:var(--text);
+  font-family: "Noto Sans SC", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+#app{
+  height:100%;
+  display:flex;
+  align-items:stretch;
+  justify-content:center;
+}
+.editor-shell{
+  width:min(920px, calc(100% - 80px));
+  margin:40px;
+  background: rgba(255,255,255,0.7);
+  border-radius:12px;
+  box-shadow: 0 4px 20px rgba(129, 161, 193, 0.08);
+  padding: 28px 28px 56px;
+}

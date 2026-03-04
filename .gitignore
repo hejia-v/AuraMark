@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/node_modules/
+**/dist/
+**/*.user
+**/*.suo
+**/*.cache
+**/*.log
+**/EditorView/
