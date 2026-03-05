@@ -1298,14 +1298,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var wpfX = screenOrigin.X / dpi.DpiScaleX;
         var wpfY = screenOrigin.Y / dpi.DpiScaleY;
 
+        const double topBarHeight = 32.0;
         const double buttonSize = 28.0;
-        const double margin = 10.0;
+        const double margin = 6.0;
 
+        // 紧贴 TopBar 下方，左上 / 右上角
         WorkspaceExpandPopup.HorizontalOffset = wpfX + margin;
-        WorkspaceExpandPopup.VerticalOffset = wpfY + ActualHeight - buttonSize - margin;
+        WorkspaceExpandPopup.VerticalOffset = wpfY + topBarHeight + margin;
 
         OutlineExpandPopup.HorizontalOffset = wpfX + ActualWidth - buttonSize - margin;
-        OutlineExpandPopup.VerticalOffset = wpfY + ActualHeight - buttonSize - margin;
+        OutlineExpandPopup.VerticalOffset = wpfY + topBarHeight + margin;
     }
 
     private void ApplyTopBarVisualState(bool visible, bool immediate = false)
