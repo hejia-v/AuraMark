@@ -112,6 +112,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         Loaded += OnLoaded;
         Closing += OnClosing;
+        LocationChanged += (_, _) => UpdateExpandPopupPositions();
+        SizeChanged += (_, _) => UpdateExpandPopupPositions();
+        StateChanged += (_, _) => UpdateCollapsedHandlesVisibility();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -223,6 +226,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnToggleOutlineClicked(object sender, RoutedEventArgs e)
     {
         ToggleOutline();
+    }
+
+    private void OnExpandWorkspaceHandleClicked(object sender, RoutedEventArgs e)
+    {
+        if (_isSidebarVisible)
+        {
+            return;
+        }
+
+        if (_isImmersive)
+        {
+            ExitImmersiveMode();
+        }
+
+        _isSidebarVisible = true;
+        ApplySidebarVisualState(true);
+    }
+
+    private void OnExpandOutlineHandleClicked(object sender, RoutedEventArgs e)
+    {
+        if (_isOutlineVisible)
+        {
+            return;
+        }
+
+        if (_isImmersive)
+        {
+            ExitImmersiveMode();
+        }
+
+        _isOutlineVisible = true;
+        ApplyOutlineVisualState(true);
     }
 
     private async void OnRetrySaveClicked(object sender, RoutedEventArgs e)
@@ -1170,6 +1205,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SidebarContainer.Width = targetWidth;
             SidebarContainer.Opacity = visible ? 1 : 0;
             SidebarContainer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            UpdateCollapsedHandlesVisibility();
             return;
         }
 
@@ -1193,6 +1229,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SidebarContainer.BeginAnimation(WidthProperty, widthAnimation);
         FadeElement(SidebarContainer, visible);
+        UpdateCollapsedHandlesVisibility();
     }
 
     private void ApplyOutlineVisualState(bool visible, bool immediate = false)
@@ -1204,6 +1241,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             OutlineContainer.Width = targetWidth;
             OutlineContainer.Opacity = visible ? 1 : 0;
             OutlineContainer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            UpdateCollapsedHandlesVisibility();
             return;
         }
 
@@ -1227,6 +1265,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         OutlineContainer.BeginAnimation(WidthProperty, widthAnimation);
         FadeElement(OutlineContainer, visible);
+        UpdateCollapsedHandlesVisibility();
+    }
+
+    private void UpdateCollapsedHandlesVisibility()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WorkspaceExpandPopup.IsOpen = false;
+            OutlineExpandPopup.IsOpen = false;
+            return;
+        }
+
+        var showWorkspace = !_isImmersive && !_isSidebarVisible;
+        var showOutline = !_isImmersive && !_isOutlineVisible;
+
+        if (showWorkspace || showOutline)
+        {
+            UpdateExpandPopupPositions();
+        }
+
+        WorkspaceExpandPopup.IsOpen = showWorkspace;
+        OutlineExpandPopup.IsOpen = showOutline;
+    }
+
+    private void UpdateExpandPopupPositions()
+    {
+        if (!IsLoaded) return;
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var screenOrigin = PointToScreen(new Point(0, 0));
+        var wpfX = screenOrigin.X / dpi.DpiScaleX;
+        var wpfY = screenOrigin.Y / dpi.DpiScaleY;
+
+        const double buttonSize = 28.0;
+        const double margin = 10.0;
+
+        WorkspaceExpandPopup.HorizontalOffset = wpfX + margin;
+        WorkspaceExpandPopup.VerticalOffset = wpfY + ActualHeight - buttonSize - margin;
+
+        OutlineExpandPopup.HorizontalOffset = wpfX + ActualWidth - buttonSize - margin;
+        OutlineExpandPopup.VerticalOffset = wpfY + ActualHeight - buttonSize - margin;
     }
 
     private void ApplyTopBarVisualState(bool visible, bool immediate = false)
