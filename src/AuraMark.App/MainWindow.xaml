@@ -15,7 +15,7 @@
         PreviewKeyDown="OnWindowPreviewKeyDown"
         MouseMove="OnWindowMouseMove">
     <WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="32"
+        <shell:WindowChrome CaptionHeight="0"
                             CornerRadius="12"
                             GlassFrameThickness="0"
                             ResizeBorderThickness="6"
@@ -39,7 +39,8 @@
                 Background="#F3F4F6"
                 BorderBrush="#1A434C5E"
                 BorderThickness="0,0,0,1"
-                Opacity="1">
+                Opacity="1"
+                MouseLeftButtonDown="OnTopBarMouseLeftButtonDown">
             <Grid Margin="14,0,8,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -55,8 +56,18 @@
                             BorderThickness="0"
                             Background="#00000000"
                             Click="OnToggleSidebarClicked"
-                            ToolTip="Toggle Sidebar (Ctrl+Shift+L)"
-                            Content="Menu"
+                            ToolTip="Toggle Workspace (Ctrl+Shift+L)"
+                            Content="Tree"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button x:Name="ToggleOutlineButton"
+                            Width="62"
+                            Height="24"
+                            Margin="0,0,4,0"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnToggleOutlineClicked"
+                            ToolTip="Toggle Outline (Ctrl+Shift+O)"
+                            Content="Outline"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                     <Button Width="52"
                             Height="24"
@@ -90,7 +101,7 @@
                             BorderThickness="0"
                             Background="#00000000"
                             Click="OnExportHtmlClicked"
-                            ToolTip="Export HTML"
+                            ToolTip="Export (HTML/PDF)"
                             Content="Export"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                 </StackPanel>
@@ -141,6 +152,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Border x:Name="SidebarContainer"
@@ -154,39 +166,21 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <TextBlock FontSize="12"
                                FontWeight="SemiBold"
                                Foreground="#8C434C5E"
-                               Text="FILES" />
+                               Text="WORKSPACE" />
 
                     <TreeView x:Name="FileTreeView"
                               Grid.Row="1"
-                              Margin="0,6,0,10"
+                              Margin="0,6,0,0"
                               BorderThickness="0"
                               Background="#00000000"
                               Foreground="#434C5E"
                               ItemsSource="{Binding FileTreeNodes}"
                               SelectedItemChanged="OnFileTreeSelectionChanged" />
-
-                    <TextBlock Grid.Row="2"
-                               FontSize="12"
-                               FontWeight="SemiBold"
-                               Foreground="#8C434C5E"
-                               Text="OUTLINE" />
-
-                    <ListBox x:Name="OutlineList"
-                             Grid.Row="3"
-                             Margin="0,6,0,0"
-                             BorderThickness="0"
-                             Background="#00000000"
-                             Foreground="#434C5E"
-                             DisplayMemberPath="DisplayText"
-                             ItemsSource="{Binding OutlineItems}"
-                             SelectionChanged="OnOutlineSelectionChanged" />
                 </Grid>
             </Border>
 
@@ -238,8 +232,49 @@
                                 BorderThickness="0"
                                 Background="#99FFFFFF"
                                 Foreground="#8F2D37"
+                                AutomationProperties.AutomationId="RetrySaveButton"
                                 Click="OnRetrySaveClicked"
                                 Content="Retry" />
+                    </DockPanel>
+                </Border>
+
+                <Border x:Name="SyncConflictToast"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,62,22,0"
+                        Padding="10,8"
+                        Background="#335E81AC"
+                        BorderBrush="#665E81AC"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Visibility="Collapsed"
+                        Opacity="0">
+                    <DockPanel>
+                        <TextBlock x:Name="SyncConflictText"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="#3A4A63"
+                                   FontSize="12"
+                                   Text="External file changed. Keep local or reload external?" />
+                        <Button x:Name="KeepLocalButton"
+                                Width="72"
+                                Height="22"
+                                Margin="0,0,6,0"
+                                BorderThickness="0"
+                                Background="#99FFFFFF"
+                                Foreground="#3A4A63"
+                                AutomationProperties.AutomationId="KeepLocalButton"
+                                Click="OnKeepLocalClicked"
+                                Content="Keep Local" />
+                        <Button x:Name="AcceptExternalButton"
+                                Width="92"
+                                Height="22"
+                                BorderThickness="0"
+                                Background="#99FFFFFF"
+                                Foreground="#3A4A63"
+                                AutomationProperties.AutomationId="AcceptExternalButton"
+                                Click="OnAcceptExternalClicked"
+                                Content="Use External" />
                     </DockPanel>
                 </Border>
 
@@ -254,6 +289,37 @@
                         Margin="0,0,20,20"
                         Visibility="Collapsed" />
             </Grid>
+
+            <Border x:Name="OutlineContainer"
+                    Grid.Column="2"
+                    Width="0"
+                    Background="#F3F4F6"
+                    BorderBrush="#1A434C5E"
+                    BorderThickness="1,0,0,0"
+                    Opacity="0"
+                    Visibility="Collapsed">
+                <Grid Margin="8,10,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#8C434C5E"
+                               Text="OUTLINE" />
+
+                    <ListBox x:Name="OutlineList"
+                             Grid.Row="1"
+                             Margin="0,6,0,0"
+                             BorderThickness="0"
+                             Background="#00000000"
+                             Foreground="#434C5E"
+                             DisplayMemberPath="DisplayText"
+                             ItemsSource="{Binding OutlineItems}"
+                             SelectionChanged="OnOutlineSelectionChanged" />
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </Window>

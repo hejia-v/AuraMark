@@ -28,7 +28,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int AutosaveDelayMilliseconds = 500;
     private const int ImmersiveTypingThresholdMilliseconds = 3000;
     private const int UiAnimationMilliseconds = 150;
+    private const int E2eLargeFileDelayMilliseconds = 500;
     private const double SidebarExpandedWidth = 280;
+    private const double OutlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
     private static readonly HashSet<string> MarkdownExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -68,6 +70,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private string _currentMarkdown = string.Empty;
     private string _pendingMarkdown = string.Empty;
     private string _pendingSaveRetryContent = string.Empty;
+    private string _pendingExternalMarkdown = string.Empty;
     private string _queuedDocumentForWeb = string.Empty;
 
     private bool _webReady;
@@ -75,11 +78,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _dirty;
     private bool _isSaving;
     private bool _isSidebarVisible;
+    private bool _isOutlineVisible;
     private bool _isImmersive;
     private bool _sidebarBeforeImmersive;
+    private bool _outlineBeforeImmersive;
     private bool _externalReloadPending;
+    private bool _hasExternalConflict;
     private bool _inputFrozen;
+    private bool _e2eMode;
     private bool _e2eStartupPending;
+    private bool _e2eForceImmersive;
+    private bool _e2eImmersiveApplied;
+    private string _e2eOpenFilePath = string.Empty;
     private string _e2eStartupMarkdown = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -114,20 +124,51 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             "AuraMark");
         Directory.CreateDirectory(docsRoot);
 
-        _currentFilePath = Path.Combine(docsRoot, "Untitled.md");
-        await LoadDocumentAsync(_currentFilePath, createIfMissing: true);
+        var startupPath = Path.Combine(docsRoot, "Untitled.md");
+        var createIfMissing = true;
+        if (!string.IsNullOrWhiteSpace(_e2eOpenFilePath))
+        {
+            startupPath = _e2eOpenFilePath;
+            createIfMissing = false;
+        }
 
-        ApplySidebarVisualState(false, immediate: true);
+        _currentFilePath = startupPath;
+        await LoadDocumentAsync(startupPath, createIfMissing: createIfMissing);
+        await TryRestoreSnapshotOnStartupAsync();
+
+        _isSidebarVisible = true;
+        _isOutlineVisible = true;
+        ApplySidebarVisualState(_isSidebarVisible, immediate: true);
+        ApplyOutlineVisualState(_isOutlineVisible, immediate: true);
         ApplyTopBarVisualState(true, immediate: true);
     }
 
     private void ConfigureE2eFromArgs()
     {
         var args = Environment.GetCommandLineArgs();
-        if (args.Any(arg => arg.Equals("--e2e", StringComparison.OrdinalIgnoreCase)))
+        _e2eMode = args.Any(arg => arg.Equals("--e2e", StringComparison.OrdinalIgnoreCase));
+        if (_e2eMode)
         {
             _e2eStartupMarkdown = "# AuraMark E2E\n\nAuraMark E2E typing sample\nline2\n";
             _e2eStartupPending = true;
+        }
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i].Equals("--e2e-open", StringComparison.OrdinalIgnoreCase) &&
+                i + 1 < args.Length &&
+                !string.IsNullOrWhiteSpace(args[i + 1]))
+            {
+                _e2eOpenFilePath = Path.GetFullPath(args[i + 1]);
+                _e2eMode = true;
+                break;
+            }
+        }
+
+        _e2eForceImmersive = args.Any(arg => arg.Equals("--e2e-force-immersive", StringComparison.OrdinalIgnoreCase));
+        if (_e2eForceImmersive)
+        {
+            _e2eMode = true;
         }
     }
 
@@ -171,12 +212,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void OnExportHtmlClicked(object sender, RoutedEventArgs e)
     {
-        await ExportHtmlAsync();
+        await ExportDocumentAsync();
     }
 
     private void OnToggleSidebarClicked(object sender, RoutedEventArgs e)
     {
         ToggleSidebar();
+    }
+
+    private void OnToggleOutlineClicked(object sender, RoutedEventArgs e)
+    {
+        ToggleOutline();
     }
 
     private async void OnRetrySaveClicked(object sender, RoutedEventArgs e)
@@ -187,6 +233,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         await SavePendingChangesAsync(force: true);
+    }
+
+    private async void OnKeepLocalClicked(object sender, RoutedEventArgs e)
+    {
+        if (!_hasExternalConflict)
+        {
+            return;
+        }
+
+        _hasExternalConflict = false;
+        _pendingExternalMarkdown = string.Empty;
+        HideSyncConflict();
+        SetState(EditorState.Editing, "Kept local");
+        await SavePendingChangesAsync(force: true);
+    }
+
+    private async void OnAcceptExternalClicked(object sender, RoutedEventArgs e)
+    {
+        if (!_hasExternalConflict || string.IsNullOrWhiteSpace(_pendingExternalMarkdown))
+        {
+            return;
+        }
+
+        await SaveConflictSnapshotAsync(_pendingMarkdown);
+        var nextMarkdown = _pendingExternalMarkdown;
+        _hasExternalConflict = false;
+        _pendingExternalMarkdown = string.Empty;
+        HideSyncConflict();
+        await ApplyExternalMarkdownAsync(nextMarkdown);
+        SetState(EditorState.Editing, "Applied external");
     }
 
     private void OnMinimizeClicked(object sender, RoutedEventArgs e)
@@ -206,6 +282,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.L)
         {
             ToggleSidebar();
+            e.Handled = true;
+            return;
+        }
+
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.O)
+        {
+            ToggleOutline();
             e.Handled = true;
             return;
         }
@@ -252,6 +335,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _lastMousePoint = current;
+    }
+
+    private void OnTopBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (FindVisualParent<Button>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch
+        {
+            // Ignore invalid drag transitions.
+        }
     }
 
     private async void OnAutosaveTimerTick(object? sender, EventArgs e)
@@ -346,6 +457,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ShowLoading(true, "Loading large file...");
             _webViewCore?.Stop();
+            if (_e2eMode)
+            {
+                await Task.Delay(E2eLargeFileDelayMilliseconds);
+            }
         }
 
         string markdown;
@@ -361,9 +476,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _pendingMarkdown = markdown;
         _dirty = false;
         _inputFrozen = false;
+        _hasExternalConflict = false;
+        _pendingExternalMarkdown = string.Empty;
 
         FileNameText.Text = Path.GetFileName(path);
         SetSavingDot(false);
+        HideSyncConflict();
         RefreshFileTree();
         UpdateOutline(markdown);
         AttachFileWatcher(path);
@@ -424,7 +542,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (Encoding.UTF8.GetByteCount(rawJson) > IpcLimits.MaxContentBytes + 4096)
         {
-            PostError("E_IPC_PARSE: payload too large");
+            PostError(ErrorCodes.IpcParse, "payload too large");
             return;
         }
 
@@ -435,20 +553,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch
         {
-            PostError("E_IPC_PARSE: invalid json");
+            PostError(ErrorCodes.IpcParse, "invalid json");
             return;
         }
 
         if (payload is null || !IpcTypes.Allowed.Contains(payload.Type))
         {
-            PostError("E_IPC_PARSE: unknown type");
+            PostError(ErrorCodes.IpcParse, "unknown type");
             return;
         }
 
         payload.Content ??= string.Empty;
         if (Encoding.UTF8.GetByteCount(payload.Content) > IpcLimits.MaxContentBytes)
         {
-            PostError("E_IPC_PARSE: content too large");
+            PostError(ErrorCodes.IpcParse, "content too large");
             return;
         }
 
@@ -464,7 +582,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 HandleWebCommand(payload.Content);
                 break;
             case IpcTypes.Error:
-                ShowSoftError(payload.Content);
+                ShowSoftError(ParseErrorMessage(payload.Content));
                 break;
         }
     }
@@ -485,6 +603,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _e2eStartupPending = false;
                 SendCommand(new HostCommand { Name = IpcCommands.E2eSetMarkdown, Content = _e2eStartupMarkdown });
+            }
+
+            if (_e2eForceImmersive && !_e2eImmersiveApplied)
+            {
+                _e2eImmersiveApplied = true;
+                Dispatcher.InvokeAsync(EnterImmersiveMode, DispatcherPriority.Background);
             }
 
             return;
@@ -549,8 +673,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _isImmersive = true;
         _sidebarBeforeImmersive = _isSidebarVisible;
+        _outlineBeforeImmersive = _isOutlineVisible;
         ApplyTopBarVisualState(false);
         ApplySidebarVisualState(false);
+        ApplyOutlineVisualState(false);
         SendCommand(new HostCommand { Name = IpcCommands.SetImmersive, Value = true });
         SetState(EditorState.Immersive);
     }
@@ -565,6 +691,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _isImmersive = false;
         ApplyTopBarVisualState(true);
         ApplySidebarVisualState(_sidebarBeforeImmersive);
+        ApplyOutlineVisualState(_outlineBeforeImmersive);
         SendCommand(new HostCommand { Name = IpcCommands.SetImmersive, Value = false });
         SetState(EditorState.Editing);
     }
@@ -613,13 +740,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _pendingSaveRetryContent = _pendingMarkdown;
             SetState(EditorState.Dirty);
-            ShowSoftError("E_SAVE_DENIED: no permission, retry or save elsewhere.");
+            ShowSoftError($"{ErrorCodes.SaveDenied}: no permission.");
+            PostError(ErrorCodes.SaveDenied, "no permission.", _currentFilePath, retryable: true);
         }
         catch (IOException)
         {
             _pendingSaveRetryContent = _pendingMarkdown;
             SetState(EditorState.Dirty);
-            ShowSoftError("E_SAVE_IO: write failed, retry.");
+            ShowSoftError($"{ErrorCodes.SaveIo}: write failed.");
+            PostError(ErrorCodes.SaveIo, "write failed.", _currentFilePath, retryable: true);
         }
         finally
         {
@@ -653,24 +782,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (_dirty)
         {
-            await SaveConflictSnapshotAsync(_pendingMarkdown);
+            _pendingExternalMarkdown = diskMarkdown;
+            _hasExternalConflict = true;
+            SetState(EditorState.ExternalSync, "Conflict detected");
+            ShowSyncConflict();
+            PostError(
+                ErrorCodes.SyncConflict,
+                "external file changed while local has unsaved updates",
+                _currentFilePath,
+                retryable: true);
+            return;
         }
 
+        await ApplyExternalMarkdownAsync(diskMarkdown);
+        SetState(EditorState.Editing);
+    }
+
+    private async Task ApplyExternalMarkdownAsync(string markdown)
+    {
         SetState(EditorState.ExternalSync);
         _inputFrozen = true;
         SendCommand(new HostCommand { Name = IpcCommands.FreezeInput });
 
-        _currentMarkdown = diskMarkdown;
-        _pendingMarkdown = diskMarkdown;
+        _currentMarkdown = markdown;
+        _pendingMarkdown = markdown;
         _dirty = false;
         SetSavingDot(false);
-        UpdateOutline(diskMarkdown);
-        QueueDocumentToWeb(diskMarkdown);
+        UpdateOutline(markdown);
+        QueueDocumentToWeb(markdown);
 
         await Task.Delay(120);
         _inputFrozen = false;
         SendCommand(new HostCommand { Name = IpcCommands.ResumeInput });
-        SetState(EditorState.Editing);
     }
 
     private async Task SaveConflictSnapshotAsync(string markdown)
@@ -683,8 +826,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 "snapshots");
             Directory.CreateDirectory(snapshotRoot);
 
-            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(_currentFilePath));
-            var hash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            var hash = ComputePathHash(_currentFilePath);
             var name = $"{hash}-{DateTime.UtcNow:yyyyMMddHHmmss}.md";
             var path = Path.Combine(snapshotRoot, name);
             await File.WriteAllTextAsync(path, markdown, Encoding.UTF8);
@@ -694,12 +836,70 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // Best effort snapshot.
         }
     }
-    private async Task ExportHtmlAsync()
+
+    private async Task TryRestoreSnapshotOnStartupAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_currentFilePath) || _e2eMode)
+        {
+            return;
+        }
+
+        try
+        {
+            var snapshotRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AuraMark",
+                "snapshots");
+            if (!Directory.Exists(snapshotRoot))
+            {
+                return;
+            }
+
+            var hash = ComputePathHash(_currentFilePath);
+            var latestSnapshot = Directory
+                .EnumerateFiles(snapshotRoot, $"{hash}-*.md", SearchOption.TopDirectoryOnly)
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(latestSnapshot))
+            {
+                return;
+            }
+
+            var snapshotTimeUtc = File.GetLastWriteTimeUtc(latestSnapshot);
+            var currentFileTimeUtc = File.Exists(_currentFilePath)
+                ? File.GetLastWriteTimeUtc(_currentFilePath)
+                : DateTime.MinValue;
+            if (snapshotTimeUtc <= currentFileTimeUtc)
+            {
+                return;
+            }
+
+            var snapshotMarkdown = await File.ReadAllTextAsync(latestSnapshot, Encoding.UTF8);
+            if (string.IsNullOrWhiteSpace(snapshotMarkdown) || snapshotMarkdown == _pendingMarkdown)
+            {
+                return;
+            }
+
+            _currentMarkdown = snapshotMarkdown;
+            _pendingMarkdown = snapshotMarkdown;
+            _dirty = true;
+            SetSavingDot(true);
+            UpdateOutline(snapshotMarkdown);
+            QueueDocumentToWeb(snapshotMarkdown);
+            SetState(EditorState.Dirty, "Recovered snapshot");
+            ShowSoftError("Recovered local snapshot. Review and save.");
+        }
+        catch
+        {
+            // Best effort restore.
+        }
+    }
+    private async Task ExportDocumentAsync()
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Export HTML",
-            Filter = "HTML|*.html",
+            Title = "Export Document",
+            Filter = "HTML|*.html|PDF|*.pdf",
             FileName = Path.GetFileNameWithoutExtension(_currentFilePath) + ".html",
             AddExtension = true,
         };
@@ -709,9 +909,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var extension = Path.GetExtension(dialog.FileName);
+        if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            await ExportPdfAsync(dialog.FileName);
+            return;
+        }
+
+        await ExportHtmlAsync(dialog.FileName);
+    }
+
+    private async Task ExportHtmlAsync(string outputPath)
+    {
         var htmlBody = Markdown.ToHtml(_pendingMarkdown);
         var title = Path.GetFileNameWithoutExtension(_currentFilePath);
-        var html = $@"<!doctype html>
+        var html = BuildHtmlDocument(title, htmlBody);
+        await File.WriteAllTextAsync(outputPath, html, Encoding.UTF8);
+        SetState(EditorState.Editing, "Exported HTML");
+    }
+
+    private async Task ExportPdfAsync(string outputPath)
+    {
+        if (_webViewCore is null)
+        {
+            ShowSoftError("PDF export unavailable: editor not ready.");
+            return;
+        }
+
+        var ok = await _webViewCore.PrintToPdfAsync(outputPath);
+        if (!ok)
+        {
+            ShowSoftError("PDF export failed. Please retry.");
+            PostError(ErrorCodes.SaveIo, "pdf export failed", outputPath, retryable: true);
+            return;
+        }
+
+        SetState(EditorState.Editing, "Exported PDF");
+    }
+
+    private static string BuildHtmlDocument(string title, string htmlBody)
+    {
+        return $@"<!doctype html>
 <html lang=""en"">
 <head>
   <meta charset=""UTF-8"" />
@@ -730,9 +968,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 {htmlBody}
 </body>
 </html>";
-
-        await File.WriteAllTextAsync(dialog.FileName, html, Encoding.UTF8);
-        SetState(EditorState.Editing, "Exported HTML");
     }
 
     private void AttachFileWatcher(string path)
@@ -915,6 +1150,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ApplySidebarVisualState(_isSidebarVisible);
     }
 
+    private void ToggleOutline()
+    {
+        _isOutlineVisible = !_isOutlineVisible;
+        if (_isImmersive)
+        {
+            return;
+        }
+
+        ApplyOutlineVisualState(_isOutlineVisible);
+    }
+
     private void ApplySidebarVisualState(bool visible, bool immediate = false)
     {
         var targetWidth = visible ? SidebarExpandedWidth : 0d;
@@ -947,6 +1193,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SidebarContainer.BeginAnimation(WidthProperty, widthAnimation);
         FadeElement(SidebarContainer, visible);
+    }
+
+    private void ApplyOutlineVisualState(bool visible, bool immediate = false)
+    {
+        var targetWidth = visible ? OutlineExpandedWidth : 0d;
+
+        if (immediate)
+        {
+            OutlineContainer.Width = targetWidth;
+            OutlineContainer.Opacity = visible ? 1 : 0;
+            OutlineContainer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+
+        if (visible)
+        {
+            OutlineContainer.Visibility = Visibility.Visible;
+        }
+
+        var duration = TimeSpan.FromMilliseconds(UiAnimationMilliseconds);
+        var widthAnimation = new DoubleAnimation(targetWidth, duration)
+        {
+            EasingFunction = new QuadraticEase(),
+        };
+        widthAnimation.Completed += (_, _) =>
+        {
+            if (!visible)
+            {
+                OutlineContainer.Visibility = Visibility.Collapsed;
+            }
+        };
+
+        OutlineContainer.BeginAnimation(WidthProperty, widthAnimation);
+        FadeElement(OutlineContainer, visible);
     }
 
     private void ApplyTopBarVisualState(bool visible, bool immediate = false)
@@ -1031,6 +1311,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         FadeElement(ErrorToast, visible: false);
     }
 
+    private void ShowSyncConflict()
+    {
+        SyncConflictText.Text = "External file changed. Keep local or reload external?";
+        FadeElement(SyncConflictToast, visible: true);
+    }
+
+    private void HideSyncConflict()
+    {
+        FadeElement(SyncConflictToast, visible: false);
+    }
+
     private void SetState(EditorState state, string? hint = null)
     {
         var label = state.ToString();
@@ -1052,14 +1343,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         });
     }
 
-    private void PostError(string message)
+    private void PostError(string code, string message, string? path = null, bool retryable = false)
     {
+        var payload = new IpcErrorPayload
+        {
+            Code = code,
+            Message = message,
+            Path = path,
+            Retryable = retryable,
+        };
+
         PostToWeb(new WebMessagePayload
         {
             Type = IpcTypes.Error,
-            Content = message,
+            Content = payload.ToJson(),
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
         });
+    }
+
+    private static string ParseErrorMessage(string content)
+    {
+        if (IpcErrorPayload.TryParse(content, out var payload) && payload is not null)
+        {
+            return $"{payload.Code}: {payload.Message}";
+        }
+
+        return content;
     }
 
     private void PostToWeb(WebMessagePayload payload)
@@ -1210,6 +1519,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             + Path.DirectorySeparatorChar;
 
         return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ComputePathHash(string path)
+    {
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(path));
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private enum EditorState

@@ -4,6 +4,13 @@ export type WebMessagePayload = {
   timestamp: number;
 };
 
+export type IpcErrorPayload = {
+  code: string;
+  message: string;
+  path?: string;
+  retryable?: boolean;
+};
+
 export type HostCommand = {
   name:
     | 'ToggleSidebar'

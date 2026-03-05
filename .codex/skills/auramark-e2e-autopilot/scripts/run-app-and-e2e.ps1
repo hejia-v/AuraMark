@@ -36,6 +36,7 @@ $appExe = Join-Path $appOutDir "AuraMark.App.exe"
 
 $logRoot = Join-Path $RunRoot "logs"
 $shotRoot = Join-Path $RunRoot "screenshots/current"
+$fixtureRoot = Join-Path $RunRoot "fixtures"
 
 function Stop-RunningAuraMark {
     $running = Get-Process -Name "AuraMark.App" -ErrorAction SilentlyContinue
@@ -44,6 +45,7 @@ function Stop-RunningAuraMark {
     foreach ($proc in $running) {
         Write-Host "Stopping process: $($proc.ProcessName) ($($proc.Id))"
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        Wait-Process -Id $proc.Id -Timeout 5 -ErrorAction SilentlyContinue
     }
     Start-Sleep -Seconds 1
 }
@@ -65,6 +67,9 @@ public static class User32 {
 
   [DllImport("user32.dll")]
   public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+  [DllImport("user32.dll", SetLastError=true)]
+  public static extern bool SetCursorPos(int X, int Y);
 
   public const int SW_RESTORE = 9;
 
@@ -90,17 +95,17 @@ function Wait-ForWindowHandle {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        if (-not [string]::IsNullOrWhiteSpace($Title)) {
-            $h = [User32]::FindWindow($null, $Title)
-            if ($h -ne [IntPtr]::Zero) {
-                return $h
-            }
-        }
-
         if ($TargetProcessId -gt 0) {
             $proc = Get-Process -Id $TargetProcessId -ErrorAction SilentlyContinue
             if ($proc -and $proc.MainWindowHandle -ne 0) {
                 return [IntPtr]$proc.MainWindowHandle
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($Title) -and $TargetProcessId -le 0) {
+            $h = [User32]::FindWindow($null, $Title)
+            if ($h -ne [IntPtr]::Zero) {
+                return $h
             }
         }
         Start-Sleep -Milliseconds 200
@@ -218,6 +223,193 @@ function Focus-Window {
     Start-Sleep -Milliseconds 250
 }
 
+function New-E2eFixtures {
+    param([Parameter(Mandatory)][string]$Root)
+
+    $null = New-Item -ItemType Directory -Path $Root -Force
+
+    $largeFilePath = Join-Path $Root "large-6mb.md"
+    $targetBytes = 6MB + 128KB
+    $line = "## AuraMark e2e large-file payload line." + [Environment]::NewLine
+    $utf8 = [System.Text.Encoding]::UTF8
+    $lineBytes = $utf8.GetByteCount($line)
+    $writtenBytes = 0
+    $writer = [System.IO.StreamWriter]::new($largeFilePath, $false, [System.Text.UTF8Encoding]::new($false))
+    try {
+        while ($writtenBytes -lt $targetBytes) {
+            $writer.Write($line)
+            $writtenBytes += $lineBytes
+        }
+    }
+    finally {
+        $writer.Dispose()
+    }
+
+    $externalPath = Join-Path $Root "external-sync.md"
+    @"
+# External Sync
+
+Initial content before external update.
+"@ | Set-Content -Path $externalPath -Encoding UTF8
+
+    $readonlyPath = Join-Path $Root "readonly.md"
+    @"
+# Readonly Case
+
+This file is readonly. E2E should show soft save error and retry.
+"@ | Set-Content -Path $readonlyPath -Encoding UTF8
+    (Get-Item -LiteralPath $readonlyPath).IsReadOnly = $true
+
+    return [ordered]@{
+        large = $largeFilePath
+        external = $externalPath
+        readonly = $readonlyPath
+    }
+}
+
+function Start-AuraMarkSession {
+    param(
+        [string[]]$LaunchArguments = @(),
+        [switch]$SkipUiChecks,
+        [string]$CaseId
+    )
+
+    if (-not (Test-Path -LiteralPath $appExe)) {
+        throw "Missing app exe: $appExe. Build first."
+    }
+
+    if (-not $NonDisruptive) {
+        Stop-RunningAuraMark
+    }
+
+    $startArgs = @{
+        FilePath = $appExe
+        WorkingDirectory = $appOutDir
+        PassThru = $true
+    }
+    if ($LaunchArguments.Count -gt 0) {
+        $escapedArgs = $LaunchArguments | ForEach-Object {
+            if ($_ -match "\s") { '"' + $_ + '"' } else { $_ }
+        }
+        $startArgs["ArgumentList"] = ($escapedArgs -join " ")
+    }
+    if ($NonDisruptive) {
+        $startArgs.WindowStyle = "Minimized"
+    }
+
+    $proc = Start-Process @startArgs
+    $launchCmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue).CommandLine
+    $result.launches += [ordered]@{
+        case = $CaseId
+        pid = $proc.Id
+        command_line = $launchCmd
+    }
+    $hwnd = Wait-ForWindowHandle -Title $WindowTitle -TimeoutSeconds $LaunchTimeoutSeconds -TargetProcessId $proc.Id
+    if ($hwnd -eq [IntPtr]::Zero) {
+        throw "Window not found: title='$WindowTitle' case='$CaseId' within ${LaunchTimeoutSeconds}s."
+    }
+
+    if (-not $NonDisruptive) {
+        Focus-Window -Handle $hwnd
+    }
+
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+    if (-not $root) {
+        throw "AutomationElement.FromHandle returned null for case '$CaseId'."
+    }
+
+    if (-not $SkipUiChecks) {
+        $names = @("New", "Open", "Save", "Export")
+        foreach ($n in $names) {
+            Assert-UiElementPresent -Root $root -Name $n
+            $result.ui_checks += [ordered]@{ case = $CaseId; name = $n; ok = $true }
+        }
+
+        $ids = @("WindowMinimizeButton", "WindowCloseButton")
+        foreach ($id in $ids) {
+            Assert-UiElementPresent -Root $root -AutomationId $id
+            $result.ui_checks += [ordered]@{ case = $CaseId; name = $id; ok = $true }
+        }
+    }
+
+    return [ordered]@{
+        process = $proc
+        handle = $hwnd
+        root = $root
+    }
+}
+
+function Stop-AuraMarkSession {
+    param($Session)
+    if ($null -eq $Session) { return }
+    if ($Session.process -and $Session.process.Id) {
+        Stop-Process -Id $Session.process.Id -Force -ErrorAction SilentlyContinue
+        Wait-Process -Id $Session.process.Id -Timeout 5 -ErrorAction SilentlyContinue
+    }
+}
+
+function Add-Checkpoint {
+    param(
+        [Parameter(Mandatory)][IntPtr]$Handle,
+        [Parameter(Mandatory)][string]$CaseId,
+        [Parameter(Mandatory)][string]$Checkpoint,
+        [int]$Seq = 1
+    )
+
+    $path = Save-Checkpoint -Handle $Handle -CaseId $CaseId -Checkpoint $Checkpoint -Seq $Seq
+    $result.checkpoints += [ordered]@{
+        case = $CaseId
+        checkpoint = $Checkpoint
+        path = $path
+    }
+}
+
+function Invoke-ButtonByAutomationId {
+    param(
+        [Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Root,
+        [Parameter(Mandatory)][string]$AutomationId,
+        [int]$TimeoutSeconds = 6
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $button = $null
+    while ((Get-Date) -lt $deadline) {
+        $button = Find-UiElementByAutomationId -Root $Root -AutomationId $AutomationId
+        if ($button) {
+            break
+        }
+        Start-Sleep -Milliseconds 200
+    }
+
+    if (-not $button) {
+        throw "Button not found by AutomationId='$AutomationId'."
+    }
+
+    $pattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+    if (-not $pattern) {
+        throw "Button '$AutomationId' does not support InvokePattern."
+    }
+
+    $pattern.Invoke()
+}
+
+function Move-MouseAcrossWindow {
+    param([Parameter(Mandatory)][IntPtr]$Handle)
+
+    $rect = New-Object User32+RECT
+    $ok = [User32]::GetWindowRect($Handle, [ref]$rect)
+    if (-not $ok) { return }
+
+    $startX = $rect.Left + 80
+    $startY = $rect.Top + 80
+    $endX = $rect.Right - 80
+    $endY = $rect.Bottom - 80
+
+    [User32]::SetCursorPos($startX, $startY) | Out-Null
+    Start-Sleep -Milliseconds 100
+    [User32]::SetCursorPos($endX, $endY) | Out-Null
+}
+
 Add-User32Interop
 
 $shouldSkipUiChecks = $SkipUiChecks
@@ -234,73 +426,107 @@ $result = [ordered]@{
     app_exe = $appExe
     launched = $false
     pid = $null
+    fixture_root = $fixtureRoot
+    launches = @()
     checkpoints = @()
     ui_checks = @()
 }
 
 try {
-    if (-not (Test-Path -LiteralPath $appExe)) {
-        throw "Missing app exe: $appExe. Build first."
-    }
+    $fixtures = New-E2eFixtures -Root $fixtureRoot
 
     if (-not $SkipLaunch) {
+        Write-Section "Case1: New -> autosave"
+        $session = Start-AuraMarkSession -LaunchArguments @("--e2e") -SkipUiChecks:$shouldSkipUiChecks -CaseId "case1"
+        try {
+            $result.launched = $true
+            $result.pid = $session.process.Id
+            if (-not $shouldSkipScreenshots) {
+                Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "app_ready" -Seq 1
+                Start-Sleep -Milliseconds 300
+                Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "after_typing" -Seq 2
+                Start-Sleep -Milliseconds 900
+                Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "after_autosave" -Seq 3
+            }
+        }
+        finally {
+            Stop-AuraMarkSession -Session $session
+        }
+
         if (-not $NonDisruptive) {
-            Stop-RunningAuraMark
+            Write-Section "Case2: Large file loading"
+            $session = Start-AuraMarkSession -LaunchArguments @("--e2e-open", $fixtures.large) -SkipUiChecks:$true -CaseId "case2"
+            try {
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case2" -Checkpoint "largefile_loading" -Seq 1
+                    Start-Sleep -Milliseconds 1200
+                    Add-Checkpoint -Handle $session.handle -CaseId "case2" -Checkpoint "largefile_loaded" -Seq 2
+                }
+            }
+            finally {
+                Stop-AuraMarkSession -Session $session
+            }
+
+            Write-Section "Case3: Immersive enter/exit"
+            $session = Start-AuraMarkSession -LaunchArguments @("--e2e-force-immersive") -SkipUiChecks:$true -CaseId "case3"
+            try {
+                Start-Sleep -Milliseconds 500
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case3" -Checkpoint "immersive_entered" -Seq 1
+                }
+                Move-MouseAcrossWindow -Handle $session.handle
+                Start-Sleep -Milliseconds 400
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case3" -Checkpoint "immersive_exited" -Seq 2
+                }
+            }
+            finally {
+                Stop-AuraMarkSession -Session $session
+            }
+
+            Write-Section "Case4: External change hot reload"
+            $session = Start-AuraMarkSession -LaunchArguments @("--e2e-open", $fixtures.external) -SkipUiChecks:$true -CaseId "case4"
+            try {
+                Start-Sleep -Milliseconds 500
+                @"
+# External Sync
+
+Updated by run-app-and-e2e at $(Get-Date -Format "s").
+"@ | Set-Content -Path $fixtures.external -Encoding UTF8
+                Start-Sleep -Milliseconds 900
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case4" -Checkpoint "external_change_detected" -Seq 1
+                }
+            }
+            finally {
+                Stop-AuraMarkSession -Session $session
+            }
+
+            Write-Section "Case5: Save error + retry"
+            $session = Start-AuraMarkSession -LaunchArguments @("--e2e", "--e2e-open", $fixtures.readonly) -SkipUiChecks:$true -CaseId "case5"
+            try {
+                Start-Sleep -Milliseconds 2000
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case5" -Checkpoint "save_error_toast_shown" -Seq 1
+                }
+                if (-not $shouldSkipUiChecks) {
+                    try {
+                        Invoke-ButtonByAutomationId -Root $session.root -AutomationId "RetrySaveButton"
+                        $result.ui_checks += [ordered]@{ case = "case5"; name = "RetrySaveButton"; ok = $true }
+                    }
+                    catch {
+                        $result.ui_checks += [ordered]@{ case = "case5"; name = "RetrySaveButton"; ok = $false; note = $_.Exception.Message }
+                    }
+                }
+                Start-Sleep -Milliseconds 500
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case5" -Checkpoint "save_error_retry_clicked" -Seq 2
+                }
+            }
+            finally {
+                Stop-AuraMarkSession -Session $session
+            }
         }
-        Write-Section "Launch App"
-        $startArgs = @{
-            FilePath = $appExe
-            WorkingDirectory = $appOutDir
-            PassThru = $true
-        }
-        if ($NonDisruptive) {
-            $startArgs.WindowStyle = "Minimized"
-        } else {
-            $startArgs.ArgumentList = @("--e2e")
-        }
-        $proc = Start-Process @startArgs
-        $result.launched = $true
-        $result.pid = $proc.Id
-    }
-
-    $hwnd = Wait-ForWindowHandle -Title $WindowTitle -TimeoutSeconds $LaunchTimeoutSeconds -TargetProcessId $result.pid
-    if ($hwnd -eq [IntPtr]::Zero) {
-        throw "Window not found: title='$WindowTitle' within ${LaunchTimeoutSeconds}s."
-    }
-
-    if (-not $NonDisruptive) {
-        Focus-Window -Handle $hwnd
-    }
-
-    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-    if (-not $root) {
-        throw "AutomationElement.FromHandle returned null."
-    }
-
-    if (-not $shouldSkipUiChecks) {
-        $names = @("New", "Open", "Save", "Export")
-        foreach ($n in $names) {
-            Assert-UiElementPresent -Root $root -Name $n
-            $result.ui_checks += [ordered]@{ name = $n; ok = $true }
-        }
-
-        $ids = @("WindowMinimizeButton", "WindowCloseButton")
-        foreach ($id in $ids) {
-            Assert-UiElementPresent -Root $root -AutomationId $id
-            $result.ui_checks += [ordered]@{ name = $id; ok = $true }
-        }
-    }
-
-    if (-not $shouldSkipScreenshots) {
-        $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "app_ready"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "app_ready" -Seq 1) }
-    }
-
-    if (-not $NonDisruptive -and -not $shouldSkipScreenshots) {
-        # App is launched with --e2e to inject markdown programmatically (no OS SendKeys / IME dependency).
-        Start-Sleep -Milliseconds 250
-        $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "after_typing"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "after_typing" -Seq 2) }
-        Start-Sleep -Milliseconds 900
-        $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "after_autosave"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "after_autosave" -Seq 3) }
     }
 }
 catch {
@@ -308,8 +534,17 @@ catch {
     $result.error = $_.Exception.Message
 }
 finally {
-    if ($shouldCloseAfter -and $result.launched -and $result.pid) {
-        Stop-Process -Id $result.pid -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath (Join-Path $fixtureRoot "readonly.md")) {
+        try {
+            Set-ItemProperty -Path (Join-Path $fixtureRoot "readonly.md") -Name IsReadOnly -Value $false
+        }
+        catch {
+            # ignore cleanup failures
+        }
+    }
+
+    if ($shouldCloseAfter) {
+        Stop-RunningAuraMark
     }
 }
 

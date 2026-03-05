@@ -6,7 +6,7 @@ import { gfm } from '@milkdown/preset-gfm';
 import { nord } from '@milkdown/theme-nord';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { prism } from '@milkdown/plugin-prism';
-import { sendToHost, onHostMessage, WebMessagePayload, HostCommand } from './ipc';
+import { sendToHost, onHostMessage, WebMessagePayload, HostCommand, IpcErrorPayload } from './ipc';
 
 const host = document.getElementById('app');
 if (!host) {
@@ -135,6 +135,19 @@ const parseCommand = (content: string): HostCommand | null => {
       return null;
     }
     return cmd;
+  } catch {
+    return null;
+  }
+};
+
+const parseErrorPayload = (content: string): IpcErrorPayload | null => {
+  try {
+    const parsed = JSON.parse(content) as IpcErrorPayload;
+    if (!parsed || typeof parsed.code !== 'string' || typeof parsed.message !== 'string') {
+      return null;
+    }
+
+    return parsed;
   } catch {
     return null;
   }
@@ -323,6 +336,16 @@ onHostMessage((payload: WebMessagePayload) => {
         setStatus('Editing');
       }
     }, 300);
+    return;
+  }
+
+  if (payload.type === 'Error') {
+    const parsed = parseErrorPayload(payload.content);
+    if (parsed) {
+      setStatus(`${parsed.code}: ${parsed.message}`);
+    } else {
+      setStatus(payload.content || 'Error');
+    }
   }
 });
 

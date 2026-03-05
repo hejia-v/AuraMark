@@ -38,6 +38,14 @@ public static class IpcLimits
     public const int MaxContentBytes = 10 * 1024 * 1024;
 }
 
+public static class ErrorCodes
+{
+    public const string SaveDenied = "E_SAVE_DENIED";
+    public const string SaveIo = "E_SAVE_IO";
+    public const string IpcParse = "E_IPC_PARSE";
+    public const string SyncConflict = "E_SYNC_CONFLICT";
+}
+
 public sealed class HostCommand
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
