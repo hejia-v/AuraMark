@@ -20,6 +20,14 @@ using Microsoft.Web.WebView2.Core;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using Microsoft.Win32;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using Point = System.Windows.Point;
+using Color = System.Windows.Media.Color;
+using Button = System.Windows.Controls.Button;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using Orientation = System.Windows.Controls.Orientation;
 
 namespace AuraMark.App;
 
@@ -35,6 +43,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const double OutlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
+    private const int MaxRecentEntries = 15;
+    private static readonly string RecentFilesJsonPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AuraMark", "recent.json");
+    private static readonly string LastWorkspaceFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AuraMark", "last_workspace.txt");
+
+    // Path data extracted from res/sprites-core-symbols/0623c1.svg (generic file/document)
+    private const string FileIconPathData =
+        "M15.169 6.5c0-.711-.001-1.204-.033-1.588a2.4 2.4 0 0 0-.112-.615l-.055-.13a1.84 1.84 0 0 0-.676-.731l-.126-.07c-.158-.081-.37-.138-.745-.169-.384-.031-.877-.032-1.588-.032H8.167c-.711 0-1.205 0-1.588.032-.376.031-.587.088-.745.168a1.84 1.84 0 0 0-.802.802c-.08.158-.137.37-.168.745-.031.384-.032.877-.032 1.588v7c0 .711 0 1.204.032 1.588.03.376.087.587.168.745l.07.126c.177.288.43.522.732.676l.13.056c.143.052.333.089.615.112.383.031.877.032 1.588.032h3.667c.71 0 1.204 0 1.588-.032.375-.031.587-.088.745-.168l.126-.07c.287-.177.522-.43.676-.732l.055-.13c.052-.144.09-.333.113-.615.03-.384.032-.877.032-1.588zm1.33 7c0 .69 0 1.246-.037 1.696-.033.4-.097.762-.241 1.098l-.068.142c-.265.522-.669.958-1.165 1.262l-.218.122c-.376.192-.782.271-1.24.309-.45.037-1.007.036-1.696.036H8.167c-.69 0-1.246 0-1.697-.036-.4-.033-.76-.098-1.097-.242l-.143-.067a3.17 3.17 0 0 1-1.261-1.165l-.123-.219c-.191-.376-.27-.782-.308-1.24-.037-.45-.036-1.007-.036-1.696v-7c0-.69 0-1.246.036-1.696.037-.458.117-.864.308-1.24A3.17 3.17 0 0 1 5.23 2.18c.377-.192.783-.271 1.24-.309.45-.037 1.008-.036 1.697-.036h3.667c.689 0 1.246 0 1.696.036.458.038.864.117 1.24.309l.218.122c.496.304.9.74 1.165 1.261l.068.143c.144.336.208.697.24 1.098.038.45.038 1.007.038 1.696z";
+
+    // Path data extracted from res/sprites-core-symbols/547df2.svg (folder with tab)
+    private const string FolderIconPathData =
+        "M6.581 2.874a3 3 0 0 1 1.817.757c.072.064.142.135.243.237.112.113.15.15.186.183.292.26.663.415 1.053.44.049.002.103.002.262.002h2.718c.56 0 1.015 0 1.385.027.378.027.714.086 1.034.226.608.267 1.111.727 1.43 1.31.168.307.256.637.317 1.01q.043.27.077.609h.37a1.915 1.915 0 0 1 1.832 2.475l-1.645 5.367a2.33 2.33 0 0 1-2.228 1.648H4.752c-.61 0-1.152-.23-1.56-.6a3 3 0 0 1-.847-.933c-.19-.33-.287-.687-.35-1.093-.063-.398-.1-.89-.147-1.499L1.43 7.605c-.053-.683-.096-1.235-.094-1.681.002-.453.05-.858.214-1.237a3 3 0 0 1 1.365-1.475c.366-.192.767-.27 1.218-.308.445-.036.997-.036 1.683-.036h.426c.144 0 .242 0 .34.006m-.659 6.13a.59.59 0 0 0-.56.415L3.793 14.54a1 1 0 0 0 .588 1.224c.11.03.244.055.423.071h10.628c.44 0 .828-.288.957-.708l1.644-5.366a.585.585 0 0 0-.56-.756zm-.106-4.872c-.707 0-1.199 0-1.58.032-.374.03-.582.087-.734.167a1.74 1.74 0 0 0-.791.855c-.068.157-.11.369-.111.745-.002.382.035.873.09 1.578l.374 4.87 1.027-3.35a1.92 1.92 0 0 1 1.831-1.354h9.908a8 8 0 0 0-.052-.406c-.049-.304-.106-.476-.177-.606a1.75 1.75 0 0 0-.83-.76c-.135-.059-.312-.1-.618-.123a20 20 0 0 0-1.293-.023h-2.718c-.144 0-.243 0-.34-.006a3 3 0 0 1-1.816-.757c-.072-.065-.141-.135-.243-.237a4 4 0 0 0-.186-.183 1.75 1.75 0 0 0-1.053-.44c-.049-.002-.103-.002-.262-.002z";
     private static readonly HashSet<string> MarkdownExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".md",
@@ -155,11 +178,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await LoadDocumentAsync(startupPath, createIfMissing: createIfMissing);
         await TryRestoreSnapshotOnStartupAsync();
 
+        if (!_e2eMode)
+        {
+            var lastWorkspace = LoadLastWorkspace();
+            if (!string.IsNullOrWhiteSpace(lastWorkspace) && Directory.Exists(lastWorkspace))
+            {
+                _workspaceRoot = lastWorkspace;
+                RefreshFileTree();
+            }
+        }
+
         _isSidebarVisible = true;
         _isOutlineVisible = true;
         ApplySidebarVisualState(_isSidebarVisible, immediate: true);
         ApplyOutlineVisualState(_isOutlineVisible, immediate: true);
         ApplyTopBarVisualState(true, immediate: true);
+        RefreshRecentMenu();
     }
 
     private void ConfigureE2eFromArgs()
@@ -222,6 +256,175 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void OnOpenFileClicked(object sender, RoutedEventArgs e)
     {
         await OpenWithDialogAsync();
+    }
+
+    private void OnOpenFolderClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Select a folder to open as workspace",
+            UseDescriptionForTitle = true,
+            AutoUpgradeEnabled = true,
+        };
+
+        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        _workspaceRoot = dialog.SelectedPath;
+        SaveLastWorkspace(_workspaceRoot);
+        RefreshFileTree();
+
+        if (!_isSidebarVisible)
+        {
+            _isSidebarVisible = true;
+            ApplySidebarVisualState(true);
+        }
+
+        AddToRecent(dialog.SelectedPath, isFolder: true);
+    }
+
+    private List<RecentEntry> LoadRecentEntries()
+    {
+        try
+        {
+            if (!File.Exists(RecentFilesJsonPath)) return [];
+            var json = File.ReadAllText(RecentFilesJsonPath);
+            return JsonSerializer.Deserialize<List<RecentEntry>>(json, _jsonOptions) ?? [];
+        }
+        catch { return []; }
+    }
+
+    private void SaveRecentEntries(List<RecentEntry> entries)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(RecentFilesJsonPath)!);
+            File.WriteAllText(RecentFilesJsonPath, JsonSerializer.Serialize(entries, _jsonOptions));
+        }
+        catch { /* best effort */ }
+    }
+
+    private void SaveLastWorkspace(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LastWorkspaceFilePath)!);
+            File.WriteAllText(LastWorkspaceFilePath, path);
+        }
+        catch { /* best effort */ }
+    }
+
+    private string LoadLastWorkspace()
+    {
+        try
+        {
+            if (!File.Exists(LastWorkspaceFilePath)) return string.Empty;
+            return File.ReadAllText(LastWorkspaceFilePath).Trim();
+        }
+        catch { return string.Empty; }
+    }
+
+    private void AddToRecent(string path, bool isFolder)
+    {
+        try
+        {
+            var entries = LoadRecentEntries();
+            entries.RemoveAll(e => e.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+            entries.Insert(0, new RecentEntry { Path = path, IsFolder = isFolder, LastOpenedUtc = DateTime.UtcNow });
+            if (entries.Count > MaxRecentEntries)
+                entries = entries.Take(MaxRecentEntries).ToList();
+            SaveRecentEntries(entries);
+            RefreshRecentMenu();
+        }
+        catch { /* best effort */ }
+    }
+
+    private void RefreshRecentMenu()
+    {
+        RecentMenuItem.Items.Clear();
+        var entries = LoadRecentEntries();
+
+        if (entries.Count == 0)
+        {
+            RecentMenuItem.Items.Add(new MenuItem
+            {
+                Header = "No recent items",
+                IsEnabled = false,
+                Style = (Style)FindResource("MenuItemStyle"),
+            });
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            var rawName = Path.GetFileName(entry.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrWhiteSpace(rawName)) rawName = entry.Path;
+
+            var iconBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA4, 0xB0));
+            var icon = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse(entry.IsFolder ? FolderIconPathData : FileIconPathData),
+                Fill = iconBrush,
+                Width = 14,
+                Height = 14,
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 7, 0),
+            };
+
+            var firstRow = new StackPanel { Orientation = Orientation.Horizontal };
+            firstRow.Children.Add(icon);
+            firstRow.Children.Add(new TextBlock { Text = rawName, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+
+            var header = new StackPanel();
+            header.Children.Add(firstRow);
+            header.Children.Add(new TextBlock
+            {
+                Text = entry.Path,
+                FontSize = 11,
+                Foreground = iconBrush,
+                Margin = new Thickness(21, 1, 0, 0),
+            });
+
+            var item = new MenuItem
+            {
+                Header = header,
+                Tag = entry,
+                Style = (Style)FindResource("MenuItemStyle"),
+            };
+            item.Click += OnRecentItemClicked;
+            RecentMenuItem.Items.Add(item);
+        }
+    }
+
+    private async void OnRecentItemClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item || item.Tag is not RecentEntry entry)
+            return;
+
+        if (entry.IsFolder)
+        {
+            if (!Directory.Exists(entry.Path))
+            {
+                ShowSoftError("Folder no longer exists.");
+                return;
+            }
+            _workspaceRoot = entry.Path;
+            SaveLastWorkspace(_workspaceRoot);
+            RefreshFileTree();
+            if (!_isSidebarVisible)
+            {
+                _isSidebarVisible = true;
+                ApplySidebarVisualState(true);
+            }
+            AddToRecent(entry.Path, isFolder: true);
+        }
+        else
+        {
+            await LoadDocumentAsync(entry.Path, createIfMissing: false);
+        }
     }
 
     private async void OnSaveNowClicked(object sender, RoutedEventArgs e)
@@ -522,7 +725,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _currentFilePath = path;
-        _workspaceRoot = Path.GetDirectoryName(path) ?? string.Empty;
+        var fileDir = Path.GetDirectoryName(path) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(_workspaceRoot))
+        {
+            _workspaceRoot = fileDir;
+        }
+        else
+        {
+            var normalizedRoot = Path.GetFullPath(_workspaceRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(path).StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                _workspaceRoot = fileDir;
+            }
+        }
         _currentMarkdown = markdown;
         _pendingMarkdown = markdown;
         _dirty = false;
@@ -537,6 +754,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         UpdateOutline(markdown);
         AttachFileWatcher(path);
         QueueDocumentToWeb(markdown);
+
+        if (!createIfMissing)
+        {
+            AddToRecent(path, isFolder: false);
+        }
 
         SetState(EditorState.Editing);
     }
@@ -1095,7 +1317,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        _fileTreeNodes.Add(BuildDirectoryNode(_workspaceRoot, depth: 0));
+        var root = BuildDirectoryNode(_workspaceRoot, depth: 0);
+        foreach (var child in root.Children)
+        {
+            _fileTreeNodes.Add(child);
+        }
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileTreeNodes)));
     }
 
@@ -1124,7 +1350,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             foreach (var subDirectory in Directory.EnumerateDirectories(directory).OrderBy(Path.GetFileName))
             {
-                node.Children.Add(BuildDirectoryNode(subDirectory, depth + 1));
+                var subNode = BuildDirectoryNode(subDirectory, depth + 1);
+                if (subNode.Children.Count > 0)
+                {
+                    node.Children.Add(subNode);
+                }
             }
 
             foreach (var file in Directory.EnumerateFiles(directory).OrderBy(Path.GetFileName))
