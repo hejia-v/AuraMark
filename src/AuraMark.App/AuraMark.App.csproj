@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AuraMark.Core\AuraMark.Core.csproj" />
+    <PackageReference Include="Markdig" Version="0.37.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
   </ItemGroup>
 

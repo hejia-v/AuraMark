@@ -1,26 +1,202 @@
-:root{
-  --surface:#F9FAFB;
-  --text:#434C5E;
-  --primary:#81A1C1;
+:root {
+  --surface: #f9fafb;
+  --sidebar: #f3f4f6;
+  --primary: #81a1c1;
+  --text: #434c5e;
+  --text-muted: rgba(67, 76, 94, 0.55);
+  --border-soft: rgba(67, 76, 94, 0.1);
+  --danger-soft: rgba(191, 97, 106, 0.2);
+  --paper-shadow: 0 4px 20px rgba(129, 161, 193, 0.08);
 }
-html,body{
-  height:100%;
-  margin:0;
-  background:var(--surface);
-  color:var(--text);
-  font-family: "Noto Sans SC", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+* {
+  box-sizing: border-box;
 }
-#app{
-  height:100%;
-  display:flex;
-  align-items:stretch;
-  justify-content:center;
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(129, 161, 193, 0.11), transparent 45%),
+    radial-gradient(circle at 90% 90%, rgba(129, 161, 193, 0.08), transparent 36%),
+    var(--surface);
+  color: var(--text);
+  font-family: 'Noto Sans SC', 'Segoe UI', system-ui, sans-serif;
 }
-.editor-shell{
-  width:min(920px, calc(100% - 80px));
-  margin:40px;
-  background: rgba(255,255,255,0.7);
-  border-radius:12px;
-  box-shadow: 0 4px 20px rgba(129, 161, 193, 0.08);
-  padding: 28px 28px 56px;
+
+body {
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.editor-shell {
+  width: 100%;
+  height: 100%;
+  padding: 12px 24px 20px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  transition: padding 160ms ease;
+}
+
+.editor-shell.is-immersive {
+  padding-top: 18px;
+}
+
+.render-status {
+  justify-self: end;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: opacity 160ms ease;
+}
+
+.editor-stage {
+  min-height: 0;
+  position: relative;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: var(--paper-shadow);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+
+.milk-root {
+  height: 100%;
+  overflow: auto;
+  padding: 24px 30px 62px;
+}
+
+.source-editor {
+  position: absolute;
+  inset: 0;
+  border: none;
+  outline: none;
+  display: none;
+  resize: none;
+  padding: 24px 30px 62px;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.72;
+  font-family: 'Fira Code', 'Noto Sans SC', monospace;
+  caret-color: var(--primary);
+}
+
+.editor-stage.is-source-mode .milk-root {
+  display: none;
+}
+
+.editor-stage.is-source-mode .source-editor {
+  display: block;
+}
+
+.editor-shell.is-frozen {
+  opacity: 0.92;
+}
+
+.editor-shell.is-frozen .editor-stage {
+  pointer-events: none;
+}
+
+.milkdown {
+  color: var(--text);
+}
+
+.milkdown .ProseMirror {
+  font-size: 16px;
+  line-height: 1.72;
+  min-height: calc(100% - 20px);
+  outline: none;
+}
+
+.milkdown .ProseMirror p {
+  margin: 0.55em 0;
+}
+
+.milkdown .ProseMirror blockquote {
+  border-left: 3px solid var(--primary);
+  margin: 1em 0;
+  padding: 0.2em 0 0.2em 1em;
+  color: var(--text-muted);
+  background: rgba(129, 161, 193, 0.08);
+  border-radius: 0 8px 8px 0;
+}
+
+.milkdown .ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.milkdown .ProseMirror th,
+.milkdown .ProseMirror td {
+  border: 1px solid var(--border-soft);
+  padding: 0.45rem 0.62rem;
+}
+
+.milkdown .ProseMirror th {
+  background: rgba(129, 161, 193, 0.09);
+  font-weight: 600;
+}
+
+.milkdown .ProseMirror code {
+  font-family: 'Fira Code', Consolas, monospace;
+  font-variant-ligatures: contextual;
+}
+
+.milkdown .ProseMirror pre {
+  position: relative;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  background: rgba(243, 244, 246, 0.88);
+  padding: 0.9rem 1rem;
+  overflow: auto;
+}
+
+.milkdown .ProseMirror pre code {
+  display: block;
+  white-space: pre;
+  line-height: 1.45;
+}
+
+.code-copy-button {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(67, 76, 94, 0.1);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.code-copy-button:hover {
+  background: rgba(129, 161, 193, 0.24);
+}
+
+.milkdown .ProseMirror img {
+  max-width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 3px 14px rgba(67, 76, 94, 0.15);
+}
+
+@media (max-width: 900px) {
+  .editor-shell {
+    padding: 8px 10px 12px;
+  }
+
+  .milk-root,
+  .source-editor {
+    padding: 16px 14px 44px;
+  }
 }

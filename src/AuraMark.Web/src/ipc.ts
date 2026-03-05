@@ -4,6 +4,21 @@ export type WebMessagePayload = {
   timestamp: number;
 };
 
+export type HostCommand = {
+  name:
+    | 'ToggleSidebar'
+    | 'ToggleSourceMode'
+    | 'FreezeInput'
+    | 'ResumeInput'
+    | 'ReplaceAll'
+    | 'ScrollToHeading'
+    | 'SetImmersive'
+    | 'InsertCodeBlock';
+  content?: string;
+  index?: number;
+  value?: boolean;
+};
+
 declare global {
   interface Window { chrome?: any; }
 }
