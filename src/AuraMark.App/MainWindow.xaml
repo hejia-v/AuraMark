@@ -302,6 +302,75 @@
                     </Setter>
                 </Trigger>
 
+                <!-- 带子菜单的下拉项（如 Recent） -->
+                <Trigger Property="Role" Value="SubmenuHeader">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Grid>
+                                    <Border x:Name="Bg"
+                                            Background="Transparent"
+                                            CornerRadius="5"
+                                            Padding="10,6"
+                                            Margin="0,1">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter ContentSource="Header"
+                                                              RecognizesAccessKey="True"
+                                                              VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="›"
+                                                       Margin="16,0,2,0"
+                                                       Foreground="#9AA4B0"
+                                                       FontSize="16"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                    <Popup x:Name="PART_Popup"
+                                           IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Placement="Right"
+                                           HorizontalOffset="-4"
+                                           VerticalOffset="-8"
+                                           AllowsTransparency="True"
+                                           Focusable="False"
+                                           PopupAnimation="Fade">
+                                        <Border Margin="0,0,6,8"
+                                                Background="#FFFFFF"
+                                                BorderBrush="#DDE3EC"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                MinWidth="280"
+                                                Padding="4">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="#000000"
+                                                                  Opacity="0.10"
+                                                                  BlurRadius="18"
+                                                                  ShadowDepth="4"
+                                                                  Direction="270" />
+                                            </Border.Effect>
+                                            <ItemsPresenter />
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="#EEF1F5" />
+                                    </Trigger>
+                                    <Trigger Property="IsSubmenuOpen" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="#E4EAF2" />
+                                    </Trigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Foreground" Value="#B0BAC6" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+
             </Style.Triggers>
         </Style>
 
@@ -354,10 +423,17 @@
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+N"
                                   Click="OnNewFileClicked" />
-                        <MenuItem Header="Open…"
+                        <MenuItem Header="Open File…"
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+O"
                                   Click="OnOpenFileClicked" />
+                        <MenuItem Header="Open Folder…"
+                                  Style="{StaticResource MenuItemStyle}"
+                                  Click="OnOpenFolderClicked" />
+                        <Separator Style="{StaticResource MenuSeparatorStyle}" />
+                        <MenuItem x:Name="RecentMenuItem"
+                                  Header="Recent"
+                                  Style="{StaticResource MenuItemStyle}" />
                         <Separator Style="{StaticResource MenuSeparatorStyle}" />
                         <MenuItem Header="Save"
                                   Style="{StaticResource MenuItemStyle}"
