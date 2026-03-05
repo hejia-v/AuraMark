@@ -1314,8 +1314,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
         {
+            WorkspaceFolderNameText.Text = string.Empty;
+            WorkspaceFolderNameText.Visibility = Visibility.Collapsed;
             return;
         }
+
+        var folderName = Path.GetFileName(_workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        WorkspaceFolderNameText.Text = folderName;
+        WorkspaceFolderNameText.Visibility = string.IsNullOrEmpty(folderName) ? Visibility.Collapsed : Visibility.Visible;
 
         var root = BuildDirectoryNode(_workspaceRoot, depth: 0);
         foreach (var child in root.Children)

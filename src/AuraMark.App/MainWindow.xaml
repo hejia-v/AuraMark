@@ -24,9 +24,170 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <!-- ================================================================
+             Icon Geometries for workspace file tree
+             Source SVGs: 0f07fb.svg (chevron-right 12x12), 111434.svg (chevron-down 12x12)
+                          547df2.svg (folder 20x20), 0623c1.svg (file/document 20x20)
+        ================================================================ -->
+        <PathGeometry x:Key="ChevronRightGeometry"
+                      Figures="M4.25 8.333V3.868a.66.66 0 0 1 1.038-.54l3.19 2.232a.66.66 0 0 1 0 1.081l-3.19 2.233a.66.66 0 0 1-1.038-.541" />
+        <PathGeometry x:Key="ChevronDownGeometry"
+                      Figures="M3.668 4.25h4.465a.66.66 0 0 1 .54 1.038l-2.232 3.19a.66.66 0 0 1-1.081 0l-2.233-3.19a.66.66 0 0 1 .541-1.038" />
+        <PathGeometry x:Key="FolderIconGeometry"
+                      Figures="M6.581 2.874a3 3 0 0 1 1.817.757c.072.064.142.135.243.237.112.113.15.15.186.183.292.26.663.415 1.053.44.049.002.103.002.262.002h2.718c.56 0 1.015 0 1.385.027.378.027.714.086 1.034.226.608.267 1.111.727 1.43 1.31.168.307.256.637.317 1.01q.043.27.077.609h.37a1.915 1.915 0 0 1 1.832 2.475l-1.645 5.367a2.33 2.33 0 0 1-2.228 1.648H4.752c-.61 0-1.152-.23-1.56-.6a3 3 0 0 1-.847-.933c-.19-.33-.287-.687-.35-1.093-.063-.398-.1-.89-.147-1.499L1.43 7.605c-.053-.683-.096-1.235-.094-1.681.002-.453.05-.858.214-1.237a3 3 0 0 1 1.365-1.475c.366-.192.767-.27 1.218-.308.445-.036.997-.036 1.683-.036h.426c.144 0 .242 0 .34.006 M5.922 9.004a.59.59 0 0 0-.56.415L3.793 14.54a1 1 0 0 0 .588 1.224c.11.03.244.055.423.071h10.628c.44 0 .828-.288.957-.708l1.644-5.366a.585.585 0 0 0-.56-.756z M5.816 4.132c-.707 0-1.199 0-1.58.032-.374.03-.582.087-.734.167a1.74 1.74 0 0 0-.791.855c-.068.157-.11.369-.111.745-.002.382.035.873.09 1.578l.374 4.87 1.027-3.35a1.92 1.92 0 0 1 1.831-1.354h9.908a8 8 0 0 0-.052-.406c-.049-.304-.106-.476-.177-.606a1.75 1.75 0 0 0-.83-.76c-.135-.059-.312-.1-.618-.123a20 20 0 0 0-1.293-.023h-2.718c-.144 0-.243 0-.34-.006a3 3 0 0 1-1.816-.757c-.072-.065-.141-.135-.243-.237a4 4 0 0 0-.186-.183 1.75 1.75 0 0 0-1.053-.44c-.049-.002-.103-.002-.262-.002z" />
+        <PathGeometry x:Key="FileIconGeometry"
+                      Figures="M15.169 6.5c0-.711-.001-1.204-.033-1.588a2.4 2.4 0 0 0-.112-.615l-.055-.13a1.84 1.84 0 0 0-.676-.731l-.126-.07c-.158-.081-.37-.138-.745-.169-.384-.031-.877-.032-1.588-.032H8.167c-.711 0-1.205 0-1.588.032-.376.031-.587.088-.745.168a1.84 1.84 0 0 0-.802.802c-.08.158-.137.37-.168.745-.031.384-.032.877-.032 1.588v7c0 .711 0 1.204.032 1.588.03.376.088.587.168.745l.07.127c.177.288.43.522.732.676l.13.056c.143.051.333.089.615.112.383.031.877.031 1.588.031h3.667c.71 0 1.204 0 1.588-.031.375-.031.587-.088.745-.168l.126-.07c.287-.177.522-.43.676-.732l.055-.13c.052-.144.09-.333.113-.615.03-.384.032-.877.032-1.588z M16.499 13.5c0 .69 0 1.246-.037 1.696-.033.4-.097.762-.241 1.098l-.068.142c-.265.522-.669.958-1.165 1.262l-.218.122c-.376.192-.782.271-1.24.309-.45.037-1.007.036-1.696.036H8.167c-.69 0-1.246 0-1.697-.036-.4-.033-.76-.098-1.097-.242l-.143-.067a3.17 3.17 0 0 1-1.261-1.165l-.123-.219c-.191-.376-.27-.782-.308-1.24-.037-.45-.036-1.007-.036-1.696v-7c0-.69 0-1.246.036-1.696.037-.458.117-.864.308-1.24A3.17 3.17 0 0 1 5.23 2.18c.377-.192.783-.271 1.24-.309.45-.037 1.008-.036 1.697-.036h3.667c.689 0 1.246 0 1.696.036.458.038.864.117 1.24.309l.218.122c.496.304.9.74 1.165 1.261l.068.143c.144.336.208.697.24 1.098.038.45.038 1.007.038 1.696z" />
+
+        <!-- File tree HierarchicalDataTemplate: shows folder/file icon + name -->
         <HierarchicalDataTemplate DataType="{x:Type models:FileTreeNode}" ItemsSource="{Binding Children}">
-            <TextBlock Text="{Binding Name}" />
+            <StackPanel Orientation="Horizontal" Margin="2,1,6,1">
+                <Path x:Name="ItemIcon"
+                      Width="14" Height="14"
+                      Margin="0,0,5,0"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Fill="#8A9BB0"
+                      Data="{StaticResource FileIconGeometry}" />
+                <TextBlock x:Name="ItemName"
+                           Text="{Binding Name}"
+                           FontSize="13"
+                           VerticalAlignment="Center"
+                           Foreground="#434C5E" />
+            </StackPanel>
+            <HierarchicalDataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                    <Setter TargetName="ItemIcon" Property="Data" Value="{StaticResource FolderIconGeometry}" />
+                    <Setter TargetName="ItemIcon" Property="Fill" Value="#6B8BAD" />
+                    <Setter TargetName="ItemName" Property="FontWeight" Value="SemiBold" />
+                    <Setter TargetName="ItemName" Property="Foreground" Value="#3D4A5C" />
+                </DataTrigger>
+            </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
+
+        <!-- File tree item style: chevron expander, icons, hover/selection feedback -->
+        <Style x:Key="FileTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <StackPanel>
+                            <!-- Row header -->
+                            <Border x:Name="RowBg"
+                                    CornerRadius="5"
+                                    Background="Transparent"
+                                    Margin="2,1"
+                                    Padding="4,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Expand/collapse toggle button with chevron icon -->
+                                    <ToggleButton x:Name="Expander"
+                                                  Grid.Column="0"
+                                                  Focusable="False"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Visibility="Hidden"
+                                                  VerticalAlignment="Center"
+                                                  HorizontalAlignment="Center">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" Width="16" Height="22">
+                                                    <Path x:Name="ChevronIcon"
+                                                          Width="8" Height="8"
+                                                          Stretch="Uniform"
+                                                          Fill="#9AA4B0"
+                                                          VerticalAlignment="Center"
+                                                          HorizontalAlignment="Center"
+                                                          Data="{StaticResource ChevronRightGeometry}" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="ChevronIcon" Property="Data" Value="{StaticResource ChevronDownGeometry}" />
+                                                        <Setter TargetName="ChevronIcon" Property="Fill" Value="#6B8BAD" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ChevronIcon" Property="Fill" Value="#3D4A5C" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+
+                                    <!-- Item header content (HierarchicalDataTemplate) -->
+                                    <ContentPresenter x:Name="PART_Header"
+                                                      Grid.Column="1"
+                                                      ContentSource="Header"
+                                                      HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Child items, indented -->
+                            <ItemsPresenter x:Name="ItemsHost"
+                                            Margin="12,0,0,0"
+                                            Visibility="Collapsed" />
+                        </StackPanel>
+
+                        <ControlTemplate.Triggers>
+                            <!-- Show chevron only for folders with children -->
+                            <Trigger Property="HasItems" Value="True">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <!-- Expand children on toggle -->
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <!-- Hover state -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBg" Property="Background" Value="#EEF1F5" />
+                            </Trigger>
+                            <!-- Selected + focused -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="IsSelectionActive" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="RowBg" Property="Background" Value="#DDE6F0" />
+                            </MultiTrigger>
+                            <!-- Selected + unfocused -->
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsSelected" Value="True" />
+                                    <Condition Property="IsSelectionActive" Value="False" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="RowBg" Property="Background" Value="#EEF1F5" />
+                            </MultiTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- File tree view: no border, horizontal scroll disabled, items use FileTreeItemStyle -->
+        <Style x:Key="FileTreeViewStyle" TargetType="TreeView">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource FileTreeItemStyle}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeView">
+                        <ScrollViewer Focusable="False"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <!-- 圆形图标按钮 Style -->
         <Style x:Key="CircularIconButton" TargetType="Button">
@@ -516,14 +677,22 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0"
-                                   VerticalAlignment="Center"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="#8C434C5E"
-                                   Text="WORKSPACE" />
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="#7C8A9C"
+                                       Text="WORKSPACE" />
+                            <TextBlock x:Name="WorkspaceFolderNameText"
+                                       FontSize="12"
+                                       Foreground="#5E7090"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,1,0,0"
+                                       Visibility="Collapsed" />
+                        </StackPanel>
                         <Button Grid.Column="1"
                                 Style="{StaticResource PanelIconButton}"
+                                VerticalAlignment="Top"
+                                Margin="0,0,0,0"
                                 Click="OnToggleSidebarClicked"
                                 ToolTip="Toggle Workspace (Ctrl+Shift+L)">
                             <!-- 面板布局图标（836f7a.svg，20×20 坐标系） -->
@@ -537,9 +706,7 @@
                     <TreeView x:Name="FileTreeView"
                               Grid.Row="1"
                               Margin="0,6,0,0"
-                              BorderThickness="0"
-                              Background="#00000000"
-                              Foreground="#434C5E"
+                              Style="{StaticResource FileTreeViewStyle}"
                               ItemsSource="{Binding FileTreeNodes}"
                               SelectedItemChanged="OnFileTreeSelectionChanged" />
                 </Grid>
