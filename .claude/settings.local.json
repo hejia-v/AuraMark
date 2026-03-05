@@ -2,11 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",
+      "Bash(dotnet run:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Read(//c/Dev/AuraMark/res/sprites-core-symbols/**)",
+      "Bash(git:*)"
     ]
   }
 }
