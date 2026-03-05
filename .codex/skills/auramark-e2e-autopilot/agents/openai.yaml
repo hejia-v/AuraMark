@@ -1,0 +1,6 @@
+display_name: AuraMark E2E Autopilot
+short_description: 端到端自愈闭环（build/test/run/screenshot/log/ui -> auto-fix -> re-test）
+default_prompt: |-
+  你现在使用 auramark-e2e-autopilot skill，为 C:\Dev\AuraMark 完成端到端交付闭环。
+  目标：在 max_iterations 内让 build/test/run/log/ui 全部通过；否则输出 blocker 报告与证据路径。
+  约束：禁止无限循环；只做最小必要改动；禁止自动更新 baseline；自动修复仅限规则明确的类别。
