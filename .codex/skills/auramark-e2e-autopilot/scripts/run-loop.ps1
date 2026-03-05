@@ -15,7 +15,8 @@ param(
     [switch]$SkipTests,
     [switch]$SkipUi,
     [switch]$SkipScreenshots,
-    [switch]$SkipDiff
+    [switch]$SkipDiff,
+    [switch]$NonDisruptive
 )
 
 Set-StrictMode -Version Latest
@@ -60,12 +61,12 @@ for ($i = 1; $i -le $MaxIterations; $i++) {
     }
 
     # Gate: build/test
-    $buildArgs = @(
-        "-RepoRoot", $RepoRoot,
-        "-Configuration", $Configuration,
-        "-RunRoot", $runRoot
-    )
-    if ($SkipTests) { $buildArgs += "-SkipTests" }
+    $buildArgs = @{
+        RepoRoot = $RepoRoot
+        Configuration = $Configuration
+        RunRoot = $runRoot
+    }
+    if ($SkipTests) { $buildArgs.SkipTests = $true }
 
     $buildOk = $true
     try {
@@ -74,6 +75,8 @@ for ($i = 1; $i -le $MaxIterations; $i++) {
     catch {
         $buildOk = $false
         $iter.reports.build = (Join-Path $runRoot "reports/build-and-unit.json")
+        $iter.reports.build_error = $_.Exception.Message
+        Write-Host ("[Gate:build] " + $_.Exception.Message) -ForegroundColor Red
     }
     $iter.gates.build = $buildOk
 
@@ -87,13 +90,19 @@ for ($i = 1; $i -le $MaxIterations; $i++) {
     # Gate: run app + minimal UI checks + screenshots
     $runOk = $true
     try {
-        $runArgs = @(
-            "-RepoRoot", $RepoRoot,
-            "-Configuration", $Configuration,
-            "-RunRoot", $runRoot
-        )
-        if ($SkipUi) { $runArgs += "-SkipUiChecks" }
-        if ($SkipScreenshots) { $runArgs += "-SkipScreenshots" }
+        $effectiveSkipUi = $SkipUi -or $NonDisruptive
+        $effectiveSkipScreenshots = $SkipScreenshots -or $NonDisruptive
+        $runArgs = @{
+            RepoRoot = $RepoRoot
+            Configuration = $Configuration
+            RunRoot = $runRoot
+        }
+        if ($effectiveSkipUi) { $runArgs.SkipUiChecks = $true }
+        if ($effectiveSkipScreenshots) { $runArgs.SkipScreenshots = $true }
+        if ($NonDisruptive) {
+            $runArgs.NonDisruptive = $true
+            $runArgs.CloseAfter = $true
+        }
         & (Join-Path $PSScriptRoot "run-app-and-e2e.ps1") @runArgs | Out-Host
     }
     catch {
@@ -115,7 +124,8 @@ for ($i = 1; $i -le $MaxIterations; $i++) {
 
     # Gate: screenshot diff (optional)
     $diffOk = $true
-    if (-not $SkipDiff -and -not $SkipScreenshots) {
+    $effectiveSkipDiff = $SkipDiff -or $NonDisruptive
+    if (-not $effectiveSkipDiff -and -not $SkipScreenshots) {
         try {
             & (Join-Path $PSScriptRoot "analyze-screenshots.ps1") -RunRoot $runRoot -BaselineRoot $BaselineRoot | Out-Host
         }

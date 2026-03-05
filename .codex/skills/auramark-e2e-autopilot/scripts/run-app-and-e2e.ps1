@@ -15,7 +15,10 @@ param(
 
     [switch]$SkipLaunch,
     [switch]$SkipUiChecks,
-    [switch]$SkipScreenshots
+    [switch]$SkipScreenshots,
+
+    [switch]$NonDisruptive,
+    [switch]$CloseAfter
 )
 
 Set-StrictMode -Version Latest
@@ -81,14 +84,24 @@ public static class User32 {
 function Wait-ForWindowHandle {
     param(
         [Parameter(Mandatory)][string]$Title,
-        [Parameter(Mandatory)][int]$TimeoutSeconds
+        [Parameter(Mandatory)][int]$TimeoutSeconds,
+        [int]$TargetProcessId = 0
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        $h = [User32]::FindWindow($null, $Title)
-        if ($h -ne [IntPtr]::Zero) {
-            return $h
+        if (-not [string]::IsNullOrWhiteSpace($Title)) {
+            $h = [User32]::FindWindow($null, $Title)
+            if ($h -ne [IntPtr]::Zero) {
+                return $h
+            }
+        }
+
+        if ($TargetProcessId -gt 0) {
+            $proc = Get-Process -Id $TargetProcessId -ErrorAction SilentlyContinue
+            if ($proc -and $proc.MainWindowHandle -ne 0) {
+                return [IntPtr]$proc.MainWindowHandle
+            }
         }
         Start-Sleep -Milliseconds 200
     }
@@ -184,6 +197,15 @@ function Focus-Window {
 
 Add-User32Interop
 
+$shouldSkipUiChecks = $SkipUiChecks
+$shouldSkipScreenshots = $SkipScreenshots
+$shouldCloseAfter = $CloseAfter
+if ($NonDisruptive) {
+    if (-not $PSBoundParameters.ContainsKey("SkipUiChecks")) { $shouldSkipUiChecks = $true }
+    if (-not $PSBoundParameters.ContainsKey("SkipScreenshots")) { $shouldSkipScreenshots = $true }
+    if (-not $PSBoundParameters.ContainsKey("CloseAfter")) { $shouldCloseAfter = $true }
+}
+
 $result = [ordered]@{
     ok = $true
     app_exe = $appExe
@@ -199,26 +221,38 @@ try {
     }
 
     if (-not $SkipLaunch) {
-        Stop-RunningAuraMark
+        if (-not $NonDisruptive) {
+            Stop-RunningAuraMark
+        }
         Write-Section "Launch App"
-        $proc = Start-Process -FilePath $appExe -WorkingDirectory $appOutDir -PassThru
+        $startArgs = @{
+            FilePath = $appExe
+            WorkingDirectory = $appOutDir
+            PassThru = $true
+        }
+        if ($NonDisruptive) {
+            $startArgs.WindowStyle = "Minimized"
+        }
+        $proc = Start-Process @startArgs
         $result.launched = $true
         $result.pid = $proc.Id
     }
 
-    $hwnd = Wait-ForWindowHandle -Title $WindowTitle -TimeoutSeconds $LaunchTimeoutSeconds
+    $hwnd = Wait-ForWindowHandle -Title $WindowTitle -TimeoutSeconds $LaunchTimeoutSeconds -TargetProcessId $result.pid
     if ($hwnd -eq [IntPtr]::Zero) {
         throw "Window not found: title='$WindowTitle' within ${LaunchTimeoutSeconds}s."
     }
 
-    Focus-Window -Handle $hwnd
+    if (-not $NonDisruptive) {
+        Focus-Window -Handle $hwnd
+    }
 
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
     if (-not $root) {
         throw "AutomationElement.FromHandle returned null."
     }
 
-    if (-not $SkipUiChecks) {
+    if (-not $shouldSkipUiChecks) {
         $names = @("New", "Open", "Save", "Export")
         foreach ($n in $names) {
             Assert-UiElementPresent -Root $root -Name $n
@@ -226,18 +260,20 @@ try {
         }
     }
 
-    if (-not $SkipScreenshots) {
+    if (-not $shouldSkipScreenshots) {
         $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "app_ready"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "app_ready" -Seq 1) }
     }
 
     # Minimal scripted interaction: Ctrl+N then type a short text.
     # This keeps automation lightweight; deeper cases should be added once AutomationId is in place.
-    [System.Windows.Forms.SendKeys]::SendWait("^n")
-    Start-Sleep -Milliseconds 300
-    [System.Windows.Forms.SendKeys]::SendWait("AuraMark E2E typing sample{ENTER}line2")
-    Start-Sleep -Milliseconds 1200
+    if (-not $NonDisruptive) {
+        [System.Windows.Forms.SendKeys]::SendWait("^n")
+        Start-Sleep -Milliseconds 300
+        [System.Windows.Forms.SendKeys]::SendWait("AuraMark E2E typing sample{ENTER}line2")
+        Start-Sleep -Milliseconds 1200
+    }
 
-    if (-not $SkipScreenshots) {
+    if (-not $NonDisruptive -and -not $shouldSkipScreenshots) {
         $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "after_typing"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "after_typing" -Seq 2) }
         $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "after_autosave"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "after_autosave" -Seq 3) }
     }
@@ -245,6 +281,11 @@ try {
 catch {
     $result.ok = $false
     $result.error = $_.Exception.Message
+}
+finally {
+    if ($shouldCloseAfter -and $result.launched -and $result.pid) {
+        Stop-Process -Id $result.pid -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $reportPath = Join-Path $RunRoot "reports/run-app-and-e2e.json"

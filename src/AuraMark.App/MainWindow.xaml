@@ -15,7 +15,7 @@
         PreviewKeyDown="OnWindowPreviewKeyDown"
         MouseMove="OnWindowMouseMove">
     <WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="0"
+        <shell:WindowChrome CaptionHeight="32"
                             CornerRadius="12"
                             GlassFrameThickness="0"
                             ResizeBorderThickness="6"
@@ -34,8 +34,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="Transparent" shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-
         <Border x:Name="TopBar"
                 Grid.Row="0"
                 Background="#F3F4F6"
@@ -44,11 +42,59 @@
                 Opacity="1">
             <Grid Margin="14,0,8,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ToggleSidebarButton"
+                            Width="46"
+                            Height="24"
+                            Margin="0,0,4,0"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnToggleSidebarClicked"
+                            ToolTip="Toggle Sidebar (Ctrl+Shift+L)"
+                            Content="Menu"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Width="52"
+                            Height="24"
+                            Margin="0,0,4,0"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnNewFileClicked"
+                            ToolTip="New (Ctrl+N)"
+                            Content="New"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Width="52"
+                            Height="24"
+                            Margin="0,0,4,0"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnOpenFileClicked"
+                            ToolTip="Open (Ctrl+O)"
+                            Content="Open"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Width="52"
+                            Height="24"
+                            Margin="0,0,4,0"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnSaveNowClicked"
+                            ToolTip="Save (Ctrl+S)"
+                            Content="Save"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Width="62"
+                            Height="24"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnExportHtmlClicked"
+                            ToolTip="Export HTML"
+                            Content="Export"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                     <TextBlock x:Name="FileNameText"
                                Margin="0,0,12,0"
                                FontSize="13"
@@ -59,49 +105,6 @@
                                FontSize="12"
                                Foreground="#8C434C5E"
                                Text="Idle" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="ToggleSidebarButton"
-                            Width="46"
-                            Height="24"
-                            Margin="0,0,4,0"
-                            BorderThickness="0"
-                            Background="#00000000"
-                            Click="OnToggleSidebarClicked"
-                            ToolTip="Toggle Sidebar (Ctrl+Shift+L)"
-                            Content="Menu" />
-                    <Button Width="52"
-                            Height="24"
-                            Margin="0,0,4,0"
-                            BorderThickness="0"
-                            Background="#00000000"
-                            Click="OnNewFileClicked"
-                            ToolTip="New (Ctrl+N)"
-                            Content="New" />
-                    <Button Width="52"
-                            Height="24"
-                            Margin="0,0,4,0"
-                            BorderThickness="0"
-                            Background="#00000000"
-                            Click="OnOpenFileClicked"
-                            ToolTip="Open (Ctrl+O)"
-                            Content="Open" />
-                    <Button Width="52"
-                            Height="24"
-                            Margin="0,0,4,0"
-                            BorderThickness="0"
-                            Background="#00000000"
-                            Click="OnSaveNowClicked"
-                            ToolTip="Save (Ctrl+S)"
-                            Content="Save" />
-                    <Button Width="62"
-                            Height="24"
-                            BorderThickness="0"
-                            Background="#00000000"
-                            Click="OnExportHtmlClicked"
-                            ToolTip="Export HTML"
-                            Content="Export" />
                 </StackPanel>
             </Grid>
         </Border>

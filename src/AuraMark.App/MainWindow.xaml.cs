@@ -88,6 +88,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow()
     {
         InitializeComponent();
+        Title = "AuraMark";
         DataContext = this;
 
         _autosaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AutosaveDelayMilliseconds) };
