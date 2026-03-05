@@ -27,6 +27,7 @@ public static class IpcCommands
     public const string FreezeInput = "FreezeInput";
     public const string ResumeInput = "ResumeInput";
     public const string ReplaceAll = "ReplaceAll";
+    public const string E2eSetMarkdown = "E2eSetMarkdown";
     public const string ScrollToHeading = "ScrollToHeading";
     public const string SetImmersive = "SetImmersive";
     public const string InsertCodeBlock = "InsertCodeBlock";
@@ -39,6 +40,8 @@ public static class IpcLimits
 
 public sealed class HostCommand
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public string Name { get; set; } = string.Empty;
 
     public string? Content { get; set; }
@@ -47,7 +50,7 @@ public sealed class HostCommand
 
     public bool? Value { get; set; }
 
-    public string ToJson() => JsonSerializer.Serialize(this);
+    public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 
     public static bool TryParse(string json, out HostCommand? command)
     {
@@ -55,7 +58,7 @@ public sealed class HostCommand
 
         try
         {
-            command = JsonSerializer.Deserialize<HostCommand>(json);
+            command = JsonSerializer.Deserialize<HostCommand>(json, JsonOptions);
             return command is not null && !string.IsNullOrWhiteSpace(command.Name);
         }
         catch

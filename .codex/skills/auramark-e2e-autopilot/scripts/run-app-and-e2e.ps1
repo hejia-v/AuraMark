@@ -176,11 +176,34 @@ function Find-UiElementByName {
     return $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
 }
 
+function Find-UiElementByAutomationId {
+    param(
+        [Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Root,
+        [Parameter(Mandatory)][string]$AutomationId
+    )
+
+    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $AutomationId)
+    return $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+}
+
 function Assert-UiElementPresent {
     param(
         [Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Root,
-        [Parameter(Mandatory)][string]$Name
+        [string]$Name = "",
+        [string]$AutomationId = ""
     )
+
+    if ([string]::IsNullOrWhiteSpace($Name) -and [string]::IsNullOrWhiteSpace($AutomationId)) {
+        throw "Assert-UiElementPresent requires Name or AutomationId."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($AutomationId)) {
+        $el = Find-UiElementByAutomationId -Root $Root -AutomationId $AutomationId
+        if (-not $el) {
+            throw "UI element not found by AutomationId='$AutomationId'."
+        }
+        return
+    }
 
     $el = Find-UiElementByName -Root $Root -Name $Name
     if (-not $el) {
@@ -232,6 +255,8 @@ try {
         }
         if ($NonDisruptive) {
             $startArgs.WindowStyle = "Minimized"
+        } else {
+            $startArgs.ArgumentList = @("--e2e")
         }
         $proc = Start-Process @startArgs
         $result.launched = $true
@@ -258,23 +283,23 @@ try {
             Assert-UiElementPresent -Root $root -Name $n
             $result.ui_checks += [ordered]@{ name = $n; ok = $true }
         }
+
+        $ids = @("WindowMinimizeButton", "WindowCloseButton")
+        foreach ($id in $ids) {
+            Assert-UiElementPresent -Root $root -AutomationId $id
+            $result.ui_checks += [ordered]@{ name = $id; ok = $true }
+        }
     }
 
     if (-not $shouldSkipScreenshots) {
         $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "app_ready"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "app_ready" -Seq 1) }
     }
 
-    # Minimal scripted interaction: Ctrl+N then type a short text.
-    # This keeps automation lightweight; deeper cases should be added once AutomationId is in place.
-    if (-not $NonDisruptive) {
-        [System.Windows.Forms.SendKeys]::SendWait("^n")
-        Start-Sleep -Milliseconds 300
-        [System.Windows.Forms.SendKeys]::SendWait("AuraMark E2E typing sample{ENTER}line2")
-        Start-Sleep -Milliseconds 1200
-    }
-
     if (-not $NonDisruptive -and -not $shouldSkipScreenshots) {
+        # App is launched with --e2e to inject markdown programmatically (no OS SendKeys / IME dependency).
+        Start-Sleep -Milliseconds 250
         $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "after_typing"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "after_typing" -Seq 2) }
+        Start-Sleep -Milliseconds 900
         $result.checkpoints += [ordered]@{ case = "case1"; checkpoint = "after_autosave"; path = (Save-Checkpoint -Handle $hwnd -CaseId "case1" -Checkpoint "after_autosave" -Seq 3) }
     }
 }

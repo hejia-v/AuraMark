@@ -188,6 +188,14 @@ const handleHostCommand = (command: HostCommand) => {
     case 'ReplaceAll':
       void applyRemoteMarkdown(command.content ?? '');
       return;
+    case 'E2eSetMarkdown': {
+      const markdown = command.content ?? '';
+      void applyRemoteMarkdown(markdown);
+      if (!inputFrozen) {
+        sendUpdate(markdown);
+      }
+      return;
+    }
     case 'ToggleSourceMode':
       setSourceMode(!sourceMode);
       return;

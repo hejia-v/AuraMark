@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -78,6 +79,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _sidebarBeforeImmersive;
     private bool _externalReloadPending;
     private bool _inputFrozen;
+    private bool _e2eStartupPending;
+    private string _e2eStartupMarkdown = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -103,6 +106,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        ConfigureE2eFromArgs();
         await InitializeWebViewAsync();
 
         var docsRoot = Path.Combine(
@@ -115,6 +119,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         ApplySidebarVisualState(false, immediate: true);
         ApplyTopBarVisualState(true, immediate: true);
+    }
+
+    private void ConfigureE2eFromArgs()
+    {
+        var args = Environment.GetCommandLineArgs();
+        if (args.Any(arg => arg.Equals("--e2e", StringComparison.OrdinalIgnoreCase)))
+        {
+            _e2eStartupMarkdown = "# AuraMark E2E\n\nAuraMark E2E typing sample\nline2\n";
+            _e2eStartupPending = true;
+        }
     }
 
     private async Task InitializeWebViewAsync()
@@ -173,6 +187,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         await SavePendingChangesAsync(force: true);
+    }
+
+    private void OnMinimizeClicked(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void OnCloseClicked(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 
     private async void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
@@ -456,6 +480,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (content.Equals("Rendered", StringComparison.OrdinalIgnoreCase))
         {
             ShowLoading(false);
+
+            if (_e2eStartupPending && !string.IsNullOrWhiteSpace(_e2eStartupMarkdown))
+            {
+                _e2eStartupPending = false;
+                SendCommand(new HostCommand { Name = IpcCommands.E2eSetMarkdown, Content = _e2eStartupMarkdown });
+            }
+
             return;
         }
     }

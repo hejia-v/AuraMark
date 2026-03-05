@@ -11,6 +11,7 @@ export type HostCommand = {
     | 'FreezeInput'
     | 'ResumeInput'
     | 'ReplaceAll'
+    | 'E2eSetMarkdown'
     | 'ScrollToHeading'
     | 'SetImmersive'
     | 'InsertCodeBlock';

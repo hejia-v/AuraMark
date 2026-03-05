@@ -60,6 +60,17 @@ for ($i = 1; $i -le $MaxIterations; $i++) {
         ok = $false
     }
 
+    # Prevent build failures due to locked assemblies from a previous run.
+    $running = Get-Process -Name "AuraMark.App" -ErrorAction SilentlyContinue
+    if ($running) {
+        Write-Section "Stop Running AuraMark (pre-build)"
+        foreach ($proc in $running) {
+            Write-Host "Stopping process: $($proc.ProcessName) ($($proc.Id))"
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds 1
+    }
+
     # Gate: build/test
     $buildArgs = @{
         RepoRoot = $RepoRoot
@@ -96,6 +107,7 @@ for ($i = 1; $i -le $MaxIterations; $i++) {
             RepoRoot = $RepoRoot
             Configuration = $Configuration
             RunRoot = $runRoot
+            CloseAfter = $true
         }
         if ($effectiveSkipUi) { $runArgs.SkipUiChecks = $true }
         if ($effectiveSkipScreenshots) { $runArgs.SkipScreenshots = $true }

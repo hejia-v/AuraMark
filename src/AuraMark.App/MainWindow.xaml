@@ -44,6 +44,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -105,6 +106,33 @@
                                FontSize="12"
                                Foreground="#8C434C5E"
                                Text="Idle" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right">
+                    <Button x:Name="MinimizeButton"
+                            Width="40"
+                            Height="24"
+                            Margin="0,0,4,0"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnMinimizeClicked"
+                            ToolTip="Minimize"
+                            Content="—"
+                            AutomationProperties.AutomationId="WindowMinimizeButton"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button x:Name="CloseButton"
+                            Width="40"
+                            Height="24"
+                            BorderThickness="0"
+                            Background="#00000000"
+                            Click="OnCloseClicked"
+                            ToolTip="Close"
+                            Content="×"
+                            AutomationProperties.AutomationId="WindowCloseButton"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                 </StackPanel>
             </Grid>
         </Border>
