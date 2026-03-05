@@ -10,5 +10,7 @@ public sealed class FileTreeNode
 
     public bool IsDirectory { get; init; }
 
+    public bool IsExpanded { get; set; }
+
     public ObservableCollection<FileTreeNode> Children { get; } = [];
 }

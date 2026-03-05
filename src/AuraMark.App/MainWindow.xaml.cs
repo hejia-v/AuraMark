@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -116,6 +117,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _e2eImmersiveApplied;
     private string _e2eOpenFilePath = string.Empty;
     private string _e2eStartupMarkdown = string.Empty;
+    private int _documentLoadVersion;
+    private bool _isDocumentRendering;
+    private int? _pendingOutlineScrollIndex;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -688,6 +692,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task LoadDocumentAsync(string path, bool createIfMissing)
     {
+        var loadVersion = Interlocked.Increment(ref _documentLoadVersion);
+
         SetState(EditorState.Loading);
         ShowLoading(true, "Loading document...");
         HideError();
@@ -700,6 +706,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (!File.Exists(path))
         {
+            if (loadVersion != Volatile.Read(ref _documentLoadVersion))
+            {
+                return;
+            }
+
             ShowSoftError("File does not exist.");
             ShowLoading(false);
             SetState(EditorState.Idle);
@@ -722,6 +733,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
         {
             markdown = await reader.ReadToEndAsync();
+        }
+
+        if (loadVersion != Volatile.Read(ref _documentLoadVersion))
+        {
+            return;
         }
 
         _currentFilePath = path;
@@ -752,6 +768,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         HideSyncConflict();
         RefreshFileTree();
         UpdateOutline(markdown);
+        _pendingOutlineScrollIndex = null;
         AttachFileWatcher(path);
         QueueDocumentToWeb(markdown);
 
@@ -777,6 +794,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         ShowLoading(true, "Rendering...");
+        _isDocumentRendering = true;
 
         if (!_editorInitialized)
         {
@@ -870,7 +888,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (content.Equals("Rendered", StringComparison.OrdinalIgnoreCase))
         {
+            _isDocumentRendering = false;
             ShowLoading(false);
+
+            if (_pendingOutlineScrollIndex is int pendingIndex)
+            {
+                SendCommand(new HostCommand
+                {
+                    Name = IpcCommands.ScrollToHeading,
+                    Index = pendingIndex,
+                });
+                _pendingOutlineScrollIndex = null;
+            }
 
             if (_e2eStartupPending && !string.IsNullOrWhiteSpace(_e2eStartupMarkdown))
             {
@@ -1310,6 +1339,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RefreshFileTree()
     {
+        var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        SnapshotExpandedPaths(_fileTreeNodes, expandedPaths);
+
         _fileTreeNodes.Clear();
 
         if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
@@ -1324,11 +1356,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WorkspaceFolderNameText.Visibility = string.IsNullOrEmpty(folderName) ? Visibility.Collapsed : Visibility.Visible;
 
         var root = BuildDirectoryNode(_workspaceRoot, depth: 0);
+        RestoreExpandedPaths(root.Children, expandedPaths);
         foreach (var child in root.Children)
         {
             _fileTreeNodes.Add(child);
         }
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileTreeNodes)));
+    }
+
+    private static void SnapshotExpandedPaths(IEnumerable<FileTreeNode> nodes, HashSet<string> paths)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsDirectory && node.IsExpanded)
+            {
+                paths.Add(node.FullPath);
+                SnapshotExpandedPaths(node.Children, paths);
+            }
+        }
+    }
+
+    private static void RestoreExpandedPaths(IEnumerable<FileTreeNode> nodes, HashSet<string> expandedPaths)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsDirectory && expandedPaths.Contains(node.FullPath))
+            {
+                node.IsExpanded = true;
+                RestoreExpandedPaths(node.Children, expandedPaths);
+            }
+        }
     }
 
     private FileTreeNode BuildDirectoryNode(string directory, int depth)
@@ -1408,13 +1465,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        await LoadDocumentAsync(node.FullPath, createIfMissing: false);
+        try
+        {
+            await LoadDocumentAsync(node.FullPath, createIfMissing: false);
+        }
+        catch (Exception ex)
+        {
+            ShowSoftError($"Open failed: {ex.Message}");
+            ShowLoading(false);
+            SetState(EditorState.Idle);
+        }
     }
 
     private void OnOutlineSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (OutlineList.SelectedItem is not OutlineItem item)
         {
+            return;
+        }
+
+        if (_isDocumentRendering || !_webReady)
+        {
+            _pendingOutlineScrollIndex = item.Index;
+            OutlineList.SelectedItem = null;
             return;
         }
 

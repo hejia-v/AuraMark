@@ -66,6 +66,7 @@
 
         <!-- File tree item style: chevron expander, icons, hover/selection feedback -->
         <Style x:Key="FileTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />

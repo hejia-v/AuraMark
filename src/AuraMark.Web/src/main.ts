@@ -42,6 +42,7 @@ let sourceMode = false;
 let inputFrozen = false;
 let suppressOutbound = false;
 let currentMarkdown = '';
+let applySequence = 0;
 
 const sendAck = (text: string) => {
   sendToHost({
@@ -114,18 +115,28 @@ const setInputFrozen = (frozen: boolean) => {
 };
 
 const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) => {
+  const sequence = ++applySequence;
   suppressOutbound = true;
-  currentMarkdown = markdown;
-  sourceEditor.value = markdown;
-  setStatus('Rendering...');
+  try {
+    currentMarkdown = markdown;
+    sourceEditor.value = markdown;
+    setStatus('Rendering...');
 
-  if (!sourceMode || fromSourceToggle) {
-    await renderEditor(markdown);
+    if (!sourceMode || fromSourceToggle) {
+      await renderEditor(markdown);
+    }
+
+    if (sequence !== applySequence) {
+      return;
+    }
+
+    setStatus(inputFrozen ? 'Synced (input frozen)' : 'Editing');
+    sendAck('Rendered');
+  } finally {
+    if (sequence === applySequence) {
+      suppressOutbound = false;
+    }
   }
-
-  setStatus(inputFrozen ? 'Synced (input frozen)' : 'Editing');
-  suppressOutbound = false;
-  sendAck('Rendered');
 };
 
 const parseCommand = (content: string): HostCommand | null => {
