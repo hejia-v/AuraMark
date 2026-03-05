@@ -17,6 +17,8 @@ using AuraMark.App.Models;
 using AuraMark.Core;
 using Markdig;
 using Microsoft.Web.WebView2.Core;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using Microsoft.Win32;
 
 namespace AuraMark.App;
@@ -116,6 +118,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SizeChanged += (_, _) => UpdateExpandPopupPositions();
         StateChanged += (_, _) => UpdateCollapsedHandlesVisibility();
     }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var hwnd = new WindowInteropHelper(this).Handle;
+        var margins = new MARGINS { Left = 1, Right = 1, Top = 1, Bottom = 1 };
+        DwmExtendFrameIntoClientArea(hwnd, ref margins);
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MARGINS { public int Left, Right, Top, Bottom; }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {

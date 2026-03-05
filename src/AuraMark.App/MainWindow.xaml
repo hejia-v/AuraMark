@@ -323,6 +323,10 @@
 
     </Window.Resources>
 
+    <Border BorderBrush="#38000000"
+            BorderThickness="1"
+            CornerRadius="12"
+            ClipToBounds="True">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
@@ -668,4 +672,5 @@
             </Popup>
         </Grid>
     </Grid>
+    </Border>
 </Window>
