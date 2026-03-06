@@ -10,6 +10,7 @@ public sealed class FileTreeNode : INotifyPropertyChanged
 {
     private bool _isExpanded;
     private bool _isSelected;
+    private bool _isRenaming;
 
     public string Name { get; init; } = string.Empty;
 
@@ -31,6 +32,12 @@ public sealed class FileTreeNode : INotifyPropertyChanged
     {
         get => _isSelected;
         set => SetProperty(ref _isSelected, value);
+    }
+
+    public bool IsRenaming
+    {
+        get => _isRenaming;
+        set => SetProperty(ref _isRenaming, value);
     }
 
     public ObservableCollection<FileTreeNode> Children { get; } = [];

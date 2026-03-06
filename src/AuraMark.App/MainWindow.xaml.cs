@@ -30,6 +30,11 @@ using Button = System.Windows.Controls.Button;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using Orientation = System.Windows.Controls.Orientation;
+using TextBox = System.Windows.Controls.TextBox;
+using DragEventArgs = System.Windows.DragEventArgs;
+using Clipboard = System.Windows.Clipboard;
+using DataObject = System.Windows.DataObject;
+using DragDropEffects = System.Windows.DragDropEffects;
 
 namespace AuraMark.App;
 
@@ -2112,6 +2117,216 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             current = VisualTreeHelper.GetParent(current);
         }
 
+        return null;
+    }
+
+    // ================================================================
+    // Tree context menu helpers
+    // ================================================================
+
+    private static FileTreeNode? GetNodeFromMenuSender(object sender)
+    {
+        if (sender is MenuItem mi
+            && mi.Parent is ContextMenu cm
+            && cm.PlacementTarget is FrameworkElement fe
+            && fe.DataContext is FileTreeNode node)
+            return node;
+        return null;
+    }
+
+    // Clipboard.SetText can throw CLIPBRD_E_CANT_OPEN when another process (e.g. IME) holds
+    // the clipboard. Retry a few times with a short sleep before giving up.
+    private static void SetClipboardTextSafe(string text)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return;
+            }
+            catch (System.Runtime.InteropServices.COMException) when (attempt < 4)
+            {
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+    }
+
+    private void OnTreeMenuCopyName(object sender, RoutedEventArgs e)
+    {
+        if (GetNodeFromMenuSender(sender) is { } node)
+            SetClipboardTextSafe(node.Name);
+    }
+
+    private void OnTreeMenuCopyPath(object sender, RoutedEventArgs e)
+    {
+        if (GetNodeFromMenuSender(sender) is { } node)
+            SetClipboardTextSafe(node.FullPath.Replace('\\', '/'));
+    }
+
+    private void OnTreeMenuCopyRelativePath(object sender, RoutedEventArgs e)
+    {
+        if (GetNodeFromMenuSender(sender) is not { } node) return;
+        if (string.IsNullOrWhiteSpace(_workspaceRoot)) return;
+        var rel = Path.GetRelativePath(_workspaceRoot, node.FullPath).Replace('\\', '/');
+        SetClipboardTextSafe(rel);
+    }
+
+    private async void OnTreeMenuNewMarkdown(object sender, RoutedEventArgs e)
+    {
+        if (GetNodeFromMenuSender(sender) is not { } node) return;
+        var dir = node.IsDirectory ? node.FullPath : Path.GetDirectoryName(node.FullPath)!;
+        var path = GetUniqueNewFilePath(dir, "Untitled", ".md");
+        await File.WriteAllTextAsync(path, string.Empty);
+        RefreshFileTree();
+        await LoadDocumentAsync(path, createIfMissing: false);
+    }
+
+    private static string GetUniqueNewFilePath(string dir, string stem, string ext)
+    {
+        var path = Path.Combine(dir, stem + ext);
+        if (!File.Exists(path)) return path;
+        for (var i = 1; ; i++)
+        {
+            path = Path.Combine(dir, $"{stem}{i}{ext}");
+            if (!File.Exists(path)) return path;
+        }
+    }
+
+    // ================================================================
+    // Rename handlers
+    // ================================================================
+
+    private void OnTreeMenuRename(object sender, RoutedEventArgs e)
+    {
+        if (GetNodeFromMenuSender(sender) is not { } node) return;
+        node.IsRenaming = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (FindRenameBox(node) is { } box)
+            {
+                box.Focus();
+                box.SelectAll();
+            }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void CommitRename(FileTreeNode node, string newName)
+    {
+        node.IsRenaming = false;
+        newName = newName.Trim();
+        if (string.IsNullOrEmpty(newName) || newName == node.Name) return;
+        var dest = Path.Combine(Path.GetDirectoryName(node.FullPath)!, newName);
+        try
+        {
+            if (node.IsDirectory) Directory.Move(node.FullPath, dest);
+            else
+            {
+                File.Move(node.FullPath, dest);
+                if (node.FullPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+                    _currentFilePath = dest;
+            }
+            RefreshFileTree();
+        }
+        catch (Exception ex) { ShowSoftError($"Rename failed: {ex.Message}"); }
+    }
+
+    private void OnRenameBoxKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox box || box.DataContext is not FileTreeNode node) return;
+        if (e.Key == Key.Return) { CommitRename(node, box.Text); e.Handled = true; }
+        if (e.Key == Key.Escape) { node.IsRenaming = false; e.Handled = true; }
+    }
+
+    private void OnRenameBoxLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box && box.DataContext is FileTreeNode node)
+            CommitRename(node, box.Text);
+    }
+
+    private TextBox? FindRenameBox(FileTreeNode node)
+        => FindDescendant<TextBox>(FileTreeView, tb => tb.Name == "RenameBox" && tb.DataContext == node);
+
+    private static T? FindDescendant<T>(DependencyObject parent, Func<T, bool> predicate) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typed && predicate(typed))
+                return typed;
+            var found = FindDescendant(child, predicate);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    // ================================================================
+    // Drag-and-drop handlers
+    // ================================================================
+
+    private Point _dragStart;
+    private FileTreeNode? _dragNode;
+
+    private void OnTreeItemMouseLeftDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragStart = e.GetPosition(null);
+        if (sender is FrameworkElement fe && fe.DataContext is FileTreeNode node)
+            _dragNode = node;
+    }
+
+    private void OnTreeItemPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _dragNode == null) return;
+        var pos = e.GetPosition(null);
+        if (Math.Abs(pos.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        DragDrop.DoDragDrop(FileTreeView, new DataObject("FileTreeNode", _dragNode), DragDropEffects.Move);
+        _dragNode = null;
+    }
+
+    private void OnFileTreeDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent("FileTreeNode") ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnFileTreeDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent("FileTreeNode")) return;
+        if (e.Data.GetData("FileTreeNode") is not FileTreeNode src) return;
+
+        var target = GetTreeNodeFromPoint(e.GetPosition(FileTreeView));
+        if (target == null || target.FullPath == src.FullPath) return;
+
+        var destDir = target.IsDirectory ? target.FullPath : Path.GetDirectoryName(target.FullPath)!;
+        if (destDir.Equals(Path.GetDirectoryName(src.FullPath), StringComparison.OrdinalIgnoreCase)) return;
+
+        var dest = Path.Combine(destDir, src.Name);
+        try
+        {
+            if (src.IsDirectory) Directory.Move(src.FullPath, dest);
+            else
+            {
+                File.Move(src.FullPath, dest);
+                if (src.FullPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+                    _currentFilePath = dest;
+            }
+            RefreshFileTree();
+        }
+        catch (Exception ex) { ShowSoftError($"Move failed: {ex.Message}"); }
+    }
+
+    private FileTreeNode? GetTreeNodeFromPoint(Point pos)
+    {
+        var hit = VisualTreeHelper.HitTest(FileTreeView, pos);
+        var el = hit?.VisualHit as DependencyObject;
+        while (el != null)
+        {
+            if (el is FrameworkElement fe && fe.DataContext is FileTreeNode node)
+                return node;
+            el = VisualTreeHelper.GetParent(el);
+        }
         return null;
     }
 

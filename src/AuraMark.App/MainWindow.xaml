@@ -51,6 +51,73 @@
         <PathGeometry x:Key="TextFileIconGeometry"
                       Figures="M3.085 13.084V6.917c0-.69 0-1.246.036-1.697.038-.457.117-.863.309-1.24l.122-.219c.304-.495.74-.9 1.261-1.165l.143-.066c.336-.144.697-.21 1.098-.242.45-.037 1.007-.036 1.696-.036h3.51c.58 0 .978-.004 1.36.088l.24.067q.355.116.675.311l.123.08c.284.198.542.461.9.82l.99.99.285.286c.263.267.461.486.615.737l.122.218q.17.334.257.698l.03.144c.061.34.058.709.058 1.216v5.177c0 .689 0 1.246-.036 1.696-.033.4-.098.761-.242 1.098l-.067.142c-.265.521-.67.957-1.165 1.26l-.218.123c-.377.192-.783.271-1.24.309-.451.036-1.008.037-1.697.037h-4.5c-.69 0-1.246 0-1.696-.037-.4-.033-.762-.097-1.098-.242l-.143-.067a3.17 3.17 0 0 1-1.261-1.165l-.122-.218c-.192-.376-.271-.782-.309-1.24-.037-.45-.036-1.007-.036-1.696m7.748-2.082.135.013a.665.665 0 0 1 0 1.303l-.135.014H7.5a.665.665 0 0 1 0-1.33zM12.5 7.669l.134.013a.665.665 0 0 1 0 1.303l-.134.014h-5a.665.665 0 0 1 0-1.33zm-8.085 5.415c0 .71 0 1.204.032 1.588.031.375.088.587.168.745l.07.126c.177.287.43.521.732.675l.13.056c.144.052.333.09.615.112.384.032.877.033 1.588.033h4.5c.711 0 1.204-.001 1.588-.033.376-.03.587-.087.745-.168l.126-.07c.287-.177.522-.43.676-.731l.056-.131c.052-.144.089-.333.112-.614.031-.384.032-.878.032-1.588V7.907c0-.482-.003-.723-.024-.895l-.027-.155a1.8 1.8 0 0 0-.15-.404l-.07-.126a2 2 0 0 0-.221-.282l-.485-.497-.99-.99c-.341-.341-.513-.51-.65-.616l-.128-.09a1.8 1.8 0 0 0-.392-.18l-.138-.04c-.194-.046-.407-.05-1.05-.05H7.75c-.711 0-1.204 0-1.588.032a2.4 2.4 0 0 0-.615.111l-.13.057a1.84 1.84 0 0 0-.731.676l-.07.126c-.081.158-.138.37-.169.745-.031.383-.032.877-.032 1.588z" />
 
+        <!-- Tree context menu: Nord palette, rounded, subtle shadow -->
+        <Style x:Key="TreeContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Padding" Value="0,4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="#FFFFFF"
+                                BorderBrush="#DDE3EC"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                MinWidth="200"
+                                Padding="0,4">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="2"
+                                                  Direction="270" Opacity="0.12" Color="#000000" />
+                            </Border.Effect>
+                            <ItemsPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TreeMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="12,0,16,0" />
+            <Setter Property="Foreground" Value="#434C5E" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bg" Background="Transparent"
+                                Margin="4,1" CornerRadius="5">
+                            <ContentPresenter ContentSource="Header"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#EEF1F5" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#B0BAC6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TreeMenuSeparatorStyle" TargetType="Separator">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="8,3" />
+            <Setter Property="Background" Value="#E8ECF2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="{TemplateBinding Background}"
+                                Margin="{TemplateBinding Margin}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- File tree HierarchicalDataTemplate: shows folder/file icon + name -->
         <HierarchicalDataTemplate DataType="{x:Type models:FileTreeNode}" ItemsSource="{Binding Children}">
             <StackPanel Orientation="Horizontal" Margin="2,1,6,1">
@@ -66,6 +133,19 @@
                            FontSize="13"
                            VerticalAlignment="Center"
                            Foreground="#434C5E" />
+                <!-- Rename TextBox（默认隐藏，IsRenaming=True 时显示） -->
+                <TextBox x:Name="RenameBox"
+                         Text="{Binding Name, Mode=OneTime}"
+                         FontSize="13"
+                         VerticalAlignment="Center"
+                         BorderThickness="1"
+                         BorderBrush="#81A1C1"
+                         Background="#FFFFFF"
+                         Padding="2,0"
+                         MinWidth="80"
+                         Visibility="Collapsed"
+                         KeyDown="OnRenameBoxKeyDown"
+                         LostFocus="OnRenameBoxLostFocus" />
             </StackPanel>
             <HierarchicalDataTemplate.Triggers>
                 <!-- Directory (collapsed): closed folder icon -->
@@ -103,6 +183,11 @@
                     <Setter TargetName="ItemIcon" Property="Fill" Value="#7C5CBF" />
                     <Setter TargetName="ItemName" Property="Foreground" Value="#6B4DAE" />
                 </DataTrigger>
+                <!-- Rename mode: hide label, show TextBox -->
+                <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                    <Setter TargetName="ItemName" Property="Visibility" Value="Collapsed" />
+                    <Setter TargetName="RenameBox" Property="Visibility" Value="Visible" />
+                </DataTrigger>
             </HierarchicalDataTemplate.Triggers>
         </HierarchicalDataTemplate>
 
@@ -124,7 +209,25 @@
                                     CornerRadius="5"
                                     Background="Transparent"
                                     Margin="2,1"
-                                    Padding="4,0">
+                                    Padding="4,0"
+                                    PreviewMouseLeftButtonDown="OnTreeItemMouseLeftDown"
+                                    PreviewMouseMove="OnTreeItemPreviewMouseMove">
+                                <Border.ContextMenu>
+                                    <ContextMenu Style="{StaticResource TreeContextMenuStyle}">
+                                        <MenuItem Header="复制名称"     Style="{StaticResource TreeMenuItemStyle}"
+                                                  Click="OnTreeMenuCopyName" />
+                                        <MenuItem Header="复制路径"     Style="{StaticResource TreeMenuItemStyle}"
+                                                  Click="OnTreeMenuCopyPath" />
+                                        <MenuItem Header="复制相对路径" Style="{StaticResource TreeMenuItemStyle}"
+                                                  Click="OnTreeMenuCopyRelativePath" />
+                                        <Separator Style="{StaticResource TreeMenuSeparatorStyle}" />
+                                        <MenuItem Header="重命名"       Style="{StaticResource TreeMenuItemStyle}"
+                                                  Click="OnTreeMenuRename" />
+                                        <Separator Style="{StaticResource TreeMenuSeparatorStyle}" />
+                                        <MenuItem Header="新建 Markdown 文件" Style="{StaticResource TreeMenuItemStyle}"
+                                                  Click="OnTreeMenuNewMarkdown" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="16" />
@@ -167,7 +270,7 @@
                                     <ContentPresenter x:Name="PART_Header"
                                                       Grid.Column="1"
                                                       ContentSource="Header"
-                                                      HorizontalAlignment="Left"
+                                                      HorizontalAlignment="Stretch"
                                                       VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
@@ -189,7 +292,7 @@
                             </Trigger>
                             <!-- Hover state -->
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="RowBg" Property="Background" Value="#EEF1F5" />
+                                <Setter TargetName="RowBg" Property="Background" Value="#D0E3F5" />
                             </Trigger>
                             <!-- Selected + focused -->
                             <MultiTrigger>
@@ -213,6 +316,77 @@
             </Setter>
         </Style>
 
+        <!-- ================================================================
+             Sidebar thin scrollbar
+             Thumb: pill shape, 5 px wide, no arrows, transparent track
+        ================================================================ -->
+        <Style x:Key="SidebarScrollBarThumb" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="Pill"
+                                CornerRadius="2.5"
+                                Background="#C4CDD8" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Pill" Property="Background" Value="#8A9BB0" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Pill" Property="Background" Value="#6B8BAD" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SidebarScrollBar" TargetType="ScrollBar">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Width" Value="5" />
+            <Setter Property="Margin" Value="0,4,2,4" />
+            <Setter Property="Cursor" Value="Arrow" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <!-- Transparent track, only thumb is visible -->
+                        <Track x:Name="PART_Track"
+                               IsDirectionReversed="True"
+                               Margin="0">
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource SidebarScrollBarThumb}" />
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SidebarScrollViewer" TargetType="ScrollViewer">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ScrollContentPresenter Grid.Column="0" />
+                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                       Grid.Column="1"
+                                       Style="{StaticResource SidebarScrollBar}"
+                                       Value="{TemplateBinding VerticalOffset}"
+                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- File tree view: no border, horizontal scroll disabled, items use FileTreeItemStyle -->
         <Style x:Key="FileTreeViewStyle" TargetType="TreeView">
             <Setter Property="Background" Value="Transparent" />
@@ -224,6 +398,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="TreeView">
                         <ScrollViewer Focusable="False"
+                                      Style="{StaticResource SidebarScrollViewer}"
                                       HorizontalScrollBarVisibility="Disabled"
                                       VerticalScrollBarVisibility="Auto">
                             <ItemsPresenter />
@@ -332,6 +507,7 @@
         </Style>
 
         <!-- 窗口最小化按钮 Style -->
+        <!-- 图标：0f510f.svg（水平线，20×20） -->
         <Style x:Key="WindowMinimizeButton" TargetType="Button">
             <Setter Property="Width" Value="36" />
             <Setter Property="Height" Value="22" />
@@ -344,21 +520,20 @@
                         <Border x:Name="Bg"
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="6">
-                            <TextBlock x:Name="Icon"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Text="—"
-                                       FontSize="12"
-                                       Foreground="#8090A4" />
+                            <Path x:Name="Icon"
+                                  Width="10" Height="10"
+                                  Stretch="Uniform"
+                                  Fill="#8090A4"
+                                  Data="M16.5 9.335l.134.014a.665.665 0 0 1 0 1.302l-.134.014h-13a.665.665 0 1 1 0-1.33z" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#E2E8F0" />
-                                <Setter TargetName="Icon" Property="Foreground" Value="#3D4A5C" />
+                                <Setter TargetName="Icon" Property="Fill" Value="#3D4A5C" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#CBD5E1" />
-                                <Setter TargetName="Icon" Property="Foreground" Value="#3D4A5C" />
+                                <Setter TargetName="Icon" Property="Fill" Value="#3D4A5C" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -367,6 +542,7 @@
         </Style>
 
         <!-- 窗口关闭按钮 Style -->
+        <!-- 图标：23ce94.svg（X 符号，16×16） -->
         <Style x:Key="WindowCloseButton" TargetType="Button">
             <Setter Property="Width" Value="36" />
             <Setter Property="Height" Value="22" />
@@ -379,21 +555,20 @@
                         <Border x:Name="Bg"
                                 Background="{TemplateBinding Background}"
                                 CornerRadius="6">
-                            <TextBlock x:Name="Icon"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       Text="✕"
-                                       FontSize="11"
-                                       Foreground="#8090A4" />
+                            <Path x:Name="Icon"
+                                  Width="9" Height="9"
+                                  Stretch="Uniform"
+                                  Fill="#8090A4"
+                                  Data="M11.115 3.915a.7.7 0 0 1 .97.97l-.09.11L8.99 8l3.005 3.005.09.11a.7.7 0 0 1-.97.97l-.11-.09L8 8.99l-3.005 3.005a.7.7 0 0 1-.99-.99L7.01 8 4.005 4.995l-.09-.11a.7.7 0 0 1 .97-.97l.11.09L8 7.01l3.005-3.005z" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#E05252" />
-                                <Setter TargetName="Icon" Property="Foreground" Value="#FFFFFF" />
+                                <Setter TargetName="Icon" Property="Fill" Value="#FFFFFF" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#C03838" />
-                                <Setter TargetName="Icon" Property="Foreground" Value="#FFFFFF" />
+                                <Setter TargetName="Icon" Property="Fill" Value="#FFFFFF" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -751,6 +926,9 @@
                               Style="{StaticResource FileTreeViewStyle}"
                               ItemsSource="{Binding FileTreeNodes}"
                               AutomationProperties.AutomationId="WorkspaceFileTree"
+                              AllowDrop="True"
+                              Drop="OnFileTreeDrop"
+                              DragOver="OnFileTreeDragOver"
                               SelectedItemChanged="OnFileTreeSelectionChanged" />
                 </Grid>
             </Border>
