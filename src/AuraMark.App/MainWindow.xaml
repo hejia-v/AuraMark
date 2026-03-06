@@ -1102,6 +1102,7 @@
                 <Grid Margin="8,10,10,10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -1128,22 +1129,115 @@
                         </Button>
                         <TextBlock Grid.Column="1"
                                    VerticalAlignment="Center"
-                                   FontSize="12"
+                                   FontSize="11"
                                    FontWeight="SemiBold"
-                                   Foreground="#8C434C5E"
+                                   Foreground="#8C9CB0"
                                    Text="OUTLINE" />
                     </Grid>
 
+                    <Border Grid.Row="1" Height="1" Margin="0,8,0,0" Background="#E0E4EA" />
+
                     <ListBox x:Name="OutlineList"
-                             Grid.Row="1"
-                             Margin="0,6,0,0"
+                             Grid.Row="2"
+                             Margin="0,4,0,0"
                              BorderThickness="0"
                              Background="#00000000"
                              Foreground="#434C5E"
-                             DisplayMemberPath="DisplayText"
                              ItemsSource="{Binding OutlineItems}"
                              AutomationProperties.AutomationId="OutlineList"
-                             SelectionChanged="OnOutlineSelectionChanged" />
+                             SelectionChanged="OnOutlineSelectionChanged">
+                        <ListBox.Template>
+                            <ControlTemplate TargetType="ListBox">
+                                <ScrollViewer Focusable="False"
+                                              Style="{StaticResource SidebarScrollViewer}"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </ControlTemplate>
+                        </ListBox.Template>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="Padding" Value="6,5" />
+                                <Setter Property="Margin" Value="0,2,0,0" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd"
+                                                    Background="{TemplateBinding Background}"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    CornerRadius="4">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E8ECF2" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#DDE3EC" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="IndentBorder" Margin="0,0,0,0">
+                                    <TextBlock x:Name="HeadingText"
+                                               Text="{Binding Text}"
+                                               FontFamily="Inter, Microsoft YaHei UI, Segoe UI Emoji"
+                                               FontSize="12"
+                                               FontWeight="Normal"
+                                               Foreground="#434C5E"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Text}" />
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Level}" Value="1">
+                                        <Setter TargetName="IndentBorder" Property="Margin" Value="0,0,0,0" />
+                                        <Setter TargetName="HeadingText" Property="FontSize" Value="13" />
+                                        <Setter TargetName="HeadingText" Property="FontWeight" Value="Bold" />
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#2E3440" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="2">
+                                        <Setter TargetName="IndentBorder" Property="Margin" Value="10,0,0,0" />
+                                        <Setter TargetName="HeadingText" Property="FontSize" Value="12" />
+                                        <Setter TargetName="HeadingText" Property="FontWeight" Value="Bold" />
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#3D4A5A" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="3">
+                                        <Setter TargetName="IndentBorder" Property="Margin" Value="20,0,0,0" />
+                                        <Setter TargetName="HeadingText" Property="FontSize" Value="12" />
+                                        <Setter TargetName="HeadingText" Property="FontWeight" Value="Normal" />
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#4C5A6A" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="4">
+                                        <Setter TargetName="IndentBorder" Property="Margin" Value="30,0,0,0" />
+                                        <Setter TargetName="HeadingText" Property="FontSize" Value="11.5" />
+                                        <Setter TargetName="HeadingText" Property="FontWeight" Value="Normal" />
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#5E6E82" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="5">
+                                        <Setter TargetName="IndentBorder" Property="Margin" Value="40,0,0,0" />
+                                        <Setter TargetName="HeadingText" Property="FontSize" Value="11" />
+                                        <Setter TargetName="HeadingText" Property="FontWeight" Value="Normal" />
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#6E7D8E" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="6">
+                                        <Setter TargetName="IndentBorder" Property="Margin" Value="48,0,0,0" />
+                                        <Setter TargetName="HeadingText" Property="FontSize" Value="11" />
+                                        <Setter TargetName="HeadingText" Property="FontWeight" Value="Normal" />
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#8090A0" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </Border>
 
