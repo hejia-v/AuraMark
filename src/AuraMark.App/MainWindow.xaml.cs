@@ -18,6 +18,7 @@ using AuraMark.App.Models;
 using AuraMark.Core;
 using Markdig;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using Microsoft.Win32;
@@ -115,6 +116,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _e2eStartupPending;
     private bool _e2eForceImmersive;
     private bool _e2eImmersiveApplied;
+    private bool _suppressFileTreeSelectionLoad;
+    private bool _webViewWarmed;
     private string _e2eOpenFilePath = string.Empty;
     private string _e2eStartupMarkdown = string.Empty;
     private int _documentLoadVersion;
@@ -180,6 +183,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _currentFilePath = startupPath;
         await LoadDocumentAsync(startupPath, createIfMissing: createIfMissing);
+        await WarmUpWebViewAsync();
         await TryRestoreSnapshotOnStartupAsync();
 
         if (!_e2eMode)
@@ -250,6 +254,42 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CoreWebView2HostResourceAccessKind.DenyCors);
 
         MainWebView.Source = new Uri($"https://{VirtualHostName}/index.html");
+    }
+
+    private async Task ResetWebViewAsync()
+    {
+        if (_webViewCore is not null)
+        {
+            _webViewCore.WebMessageReceived -= OnWebMessageReceived;
+            _webViewCore.NavigationStarting -= OnNavigationStarting;
+            _webViewCore.WebResourceRequested -= OnWebResourceRequested;
+        }
+
+        _webViewCore = null;
+        _webReady = false;
+        _editorInitialized = false;
+        _isDocumentRendering = false;
+
+        MainWebView.Dispose();
+        WebViewHost.Children.Clear();
+
+        var webView = new WebView2();
+        MainWebView = webView;
+        WebViewHost.Children.Add(webView);
+
+        await InitializeWebViewAsync();
+    }
+
+    private async Task WarmUpWebViewAsync()
+    {
+        if (_webViewWarmed || string.IsNullOrEmpty(_currentMarkdown))
+        {
+            return;
+        }
+
+        _webViewWarmed = true;
+        await ResetWebViewAsync();
+        QueueDocumentToWeb(_currentMarkdown);
     }
 
     private async void OnNewFileClicked(object sender, RoutedEventArgs e)
@@ -690,8 +730,54 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return Path.Combine(root, $"Untitled-{DateTime.Now:yyyyMMdd-HHmmss}.md");
     }
 
+    private async Task<bool> EnsureReadyToSwitchDocumentAsync(string nextPath)
+    {
+        if (string.IsNullOrWhiteSpace(_currentFilePath) ||
+            nextPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        _autosaveTimer.Stop();
+
+        if (_isSaving)
+        {
+            ShowLoading(true, "Finishing save...");
+            while (_isSaving)
+            {
+                await Task.Delay(25);
+            }
+        }
+
+        if (!_dirty)
+        {
+            return true;
+        }
+
+        ShowLoading(true, "Saving current document...");
+        await SavePendingChangesAsync(force: true);
+        if (!_dirty)
+        {
+            return true;
+        }
+
+        ShowSoftError("Save current document before switching files.");
+        ShowLoading(false);
+        SetState(EditorState.Dirty, "Switch cancelled");
+        return false;
+    }
+
     private async Task LoadDocumentAsync(string path, bool createIfMissing)
     {
+        path = Path.GetFullPath(path);
+        var isSwitchingDocument =
+            !string.IsNullOrWhiteSpace(_currentFilePath) &&
+            !path.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase);
+        if (!await EnsureReadyToSwitchDocumentAsync(path))
+        {
+            return;
+        }
+
         var loadVersion = Interlocked.Increment(ref _documentLoadVersion);
 
         SetState(EditorState.Loading);
@@ -768,8 +854,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         HideSyncConflict();
         RefreshFileTree();
         UpdateOutline(markdown);
+        OutlineList.SelectedItem = null;
         _pendingOutlineScrollIndex = null;
         AttachFileWatcher(path);
+
+        if (isSwitchingDocument)
+        {
+            await ResetWebViewAsync();
+        }
+
         QueueDocumentToWeb(markdown);
 
         if (!createIfMissing)
@@ -890,6 +983,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _isDocumentRendering = false;
             ShowLoading(false);
+            WebViewHost.UpdateLayout();
+            MainWebView.InvalidateVisual();
+            MainWebView.UpdateLayout();
 
             if (_pendingOutlineScrollIndex is int pendingIndex)
             {
@@ -1015,42 +1111,56 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        var savePath = _currentFilePath;
+        var markdownToSave = _pendingMarkdown;
         _isSaving = true;
         SetState(EditorState.Saving);
 
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_currentFilePath) ?? ".");
-            await File.WriteAllTextAsync(_currentFilePath, _pendingMarkdown, Encoding.UTF8);
+            Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? ".");
+            await File.WriteAllTextAsync(savePath, markdownToSave, Encoding.UTF8);
             _ignoreWatcherUntilUtc = DateTime.UtcNow.AddMilliseconds(1200);
 
-            _currentMarkdown = _pendingMarkdown;
-            _dirty = false;
-            _pendingSaveRetryContent = string.Empty;
-            HideError();
-            SetSavingDot(false);
-            SetState(EditorState.Editing);
-
-            PostToWeb(new WebMessagePayload
+            var isCurrentSaveContext =
+                savePath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(markdownToSave, _pendingMarkdown, StringComparison.Ordinal);
+            if (isCurrentSaveContext)
             {
-                Type = IpcTypes.Ack,
-                Content = "Saved",
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            });
+                _currentMarkdown = markdownToSave;
+                _dirty = false;
+                _pendingSaveRetryContent = string.Empty;
+                HideError();
+                SetSavingDot(false);
+                SetState(EditorState.Editing);
+
+                PostToWeb(new WebMessagePayload
+                {
+                    Type = IpcTypes.Ack,
+                    Content = "Saved",
+                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                });
+            }
         }
         catch (UnauthorizedAccessException)
         {
-            _pendingSaveRetryContent = _pendingMarkdown;
-            SetState(EditorState.Dirty);
-            ShowSoftError($"{ErrorCodes.SaveDenied}: no permission.");
-            PostError(ErrorCodes.SaveDenied, "no permission.", _currentFilePath, retryable: true);
+            if (savePath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _pendingSaveRetryContent = markdownToSave;
+                SetState(EditorState.Dirty);
+                ShowSoftError($"{ErrorCodes.SaveDenied}: no permission.");
+                PostError(ErrorCodes.SaveDenied, "no permission.", savePath, retryable: true);
+            }
         }
         catch (IOException)
         {
-            _pendingSaveRetryContent = _pendingMarkdown;
-            SetState(EditorState.Dirty);
-            ShowSoftError($"{ErrorCodes.SaveIo}: write failed.");
-            PostError(ErrorCodes.SaveIo, "write failed.", _currentFilePath, retryable: true);
+            if (savePath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _pendingSaveRetryContent = markdownToSave;
+                SetState(EditorState.Dirty);
+                ShowSoftError($"{ErrorCodes.SaveIo}: write failed.");
+                PostError(ErrorCodes.SaveIo, "write failed.", savePath, retryable: true);
+            }
         }
         finally
         {
@@ -1339,29 +1449,38 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void RefreshFileTree()
     {
-        var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        SnapshotExpandedPaths(_fileTreeNodes, expandedPaths);
-
-        _fileTreeNodes.Clear();
-
-        if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+        _suppressFileTreeSelectionLoad = true;
+        try
         {
-            WorkspaceFolderNameText.Text = string.Empty;
-            WorkspaceFolderNameText.Visibility = Visibility.Collapsed;
-            return;
+            var expandedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            SnapshotExpandedPaths(_fileTreeNodes, expandedPaths);
+
+            _fileTreeNodes.Clear();
+
+            if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+            {
+                WorkspaceFolderNameText.Text = string.Empty;
+                WorkspaceFolderNameText.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var folderName = Path.GetFileName(_workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            WorkspaceFolderNameText.Text = folderName;
+            WorkspaceFolderNameText.Visibility = string.IsNullOrEmpty(folderName) ? Visibility.Collapsed : Visibility.Visible;
+
+            var root = BuildDirectoryNode(_workspaceRoot, depth: 0);
+            RestoreExpandedPaths(root.Children, expandedPaths);
+            SyncCurrentFileSelection(root.Children);
+            foreach (var child in root.Children)
+            {
+                _fileTreeNodes.Add(child);
+            }
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileTreeNodes)));
         }
-
-        var folderName = Path.GetFileName(_workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        WorkspaceFolderNameText.Text = folderName;
-        WorkspaceFolderNameText.Visibility = string.IsNullOrEmpty(folderName) ? Visibility.Collapsed : Visibility.Visible;
-
-        var root = BuildDirectoryNode(_workspaceRoot, depth: 0);
-        RestoreExpandedPaths(root.Children, expandedPaths);
-        foreach (var child in root.Children)
+        finally
         {
-            _fileTreeNodes.Add(child);
+            _suppressFileTreeSelectionLoad = false;
         }
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileTreeNodes)));
     }
 
     private static void SnapshotExpandedPaths(IEnumerable<FileTreeNode> nodes, HashSet<string> paths)
@@ -1386,6 +1505,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 RestoreExpandedPaths(node.Children, expandedPaths);
             }
         }
+    }
+
+    private bool SyncCurrentFileSelection(IEnumerable<FileTreeNode> nodes)
+    {
+        var found = false;
+
+        foreach (var node in nodes)
+        {
+            var isMatch = false;
+            if (node.IsDirectory)
+            {
+                isMatch = SyncCurrentFileSelection(node.Children);
+                if (isMatch)
+                {
+                    node.IsExpanded = true;
+                }
+            }
+            else
+            {
+                isMatch = node.FullPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase);
+            }
+
+            node.IsSelected = isMatch;
+            found |= isMatch;
+        }
+
+        return found;
     }
 
     private FileTreeNode BuildDirectoryNode(string directory, int depth)
@@ -1455,12 +1601,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void OnFileTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        if (_suppressFileTreeSelectionLoad)
+        {
+            return;
+        }
+
         if (e.NewValue is not FileTreeNode node || node.IsDirectory)
         {
             return;
         }
 
         if (!File.Exists(node.FullPath))
+        {
+            return;
+        }
+
+        if (node.FullPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -1799,6 +1955,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             return;
         }
+
+        _webReady = false;
+        _editorInitialized = false;
 
         if (uri.Scheme.Equals("about", StringComparison.OrdinalIgnoreCase))
         {

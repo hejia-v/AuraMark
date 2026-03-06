@@ -5,7 +5,6 @@ import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { nord } from '@milkdown/theme-nord';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
-import { prism } from '@milkdown/plugin-prism';
 import { sendToHost, onHostMessage, WebMessagePayload, HostCommand, IpcErrorPayload } from './ipc';
 
 const host = document.getElementById('app');
@@ -43,6 +42,22 @@ let inputFrozen = false;
 let suppressOutbound = false;
 let currentMarkdown = '';
 let applySequence = 0;
+let renderQueue: Promise<void> = Promise.resolve();
+
+window.addEventListener('error', (event) => {
+  sendToHost({
+    type: 'Error',
+    content: `window error: ${event.message}`,
+    timestamp: Date.now(),
+  });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  sendToHost({
+    type: 'Error',
+    content: `unhandled rejection: ${String(event.reason)}`,
+    timestamp: Date.now(),
+  });
+});
 
 const sendAck = (text: string) => {
   sendToHost({
@@ -64,37 +79,59 @@ const setStatus = (text: string) => {
   statusBar.textContent = text;
 };
 
-const renderEditor = async (markdown: string) => {
-  if (editor && typeof (editor as any).destroy === 'function') {
-    await (editor as any).destroy(true);
-  }
+const renderEditor = async (markdown: string, sequence: number) => {
+  renderQueue = renderQueue
+    .catch(() => undefined)
+    .then(async () => {
+      if (sequence !== applySequence) {
+        return;
+      }
 
-  milkRoot.innerHTML = '';
-  editor = await Editor.make()
-    .config((ctx) => {
-      ctx.set(rootCtx, milkRoot);
-      ctx.set(defaultValueCtx, markdown);
-    })
-    .use(nord)
-    .use(commonmark)
-    .use(gfm)
-    .use(prism)
-    .use(listener)
-    .create();
+      if (editor) {
+        const previousEditor = editor;
+        editor = null;
+        if (typeof (previousEditor as any).destroy === 'function') {
+          await (previousEditor as any).destroy(true);
+        }
+      }
 
-  const l = editor.ctx.get(listenerCtx);
-  l.markdownUpdated((_ctx, markdownText) => {
-    currentMarkdown = markdownText;
-    sourceEditor.value = markdownText;
-    if (suppressOutbound || inputFrozen) {
-      return;
-    }
+      if (sequence !== applySequence) {
+        return;
+      }
 
-    sendUpdate(markdownText);
-    ensureCodeCopyButtons();
-  });
+      milkRoot.innerHTML = '';
+      const nextEditor = await Editor.make()
+        .config((ctx) => {
+          ctx.set(rootCtx, milkRoot);
+          ctx.set(defaultValueCtx, markdown);
+        })
+        .use(nord)
+        .use(commonmark)
+        .use(gfm)
+        .use(listener)
+        .create();
 
-  ensureCodeCopyButtons();
+      if (sequence !== applySequence) {
+        if (typeof (nextEditor as any).destroy === 'function') {
+          await (nextEditor as any).destroy(true);
+        }
+        return;
+      }
+
+      editor = nextEditor;
+      const l = nextEditor.ctx.get(listenerCtx);
+      l.markdownUpdated((_ctx, markdownText) => {
+        currentMarkdown = markdownText;
+        sourceEditor.value = markdownText;
+        if (suppressOutbound || inputFrozen) {
+          return;
+        }
+
+        sendUpdate(markdownText);
+      });
+    });
+
+  await renderQueue;
 };
 
 const setSourceMode = (enabled: boolean) => {
@@ -123,7 +160,7 @@ const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) =
     setStatus('Rendering...');
 
     if (!sourceMode || fromSourceToggle) {
-      await renderEditor(markdown);
+      await renderEditor(markdown, sequence);
     }
 
     if (sequence !== applySequence) {
@@ -248,46 +285,9 @@ const handleHostCommand = (command: HostCommand) => {
   }
 };
 
-const ensureCodeCopyButtons = () => {
-  const blocks = milkRoot.querySelectorAll('pre');
-  blocks.forEach((preElement) => {
-    const pre = preElement as HTMLElement;
-    if (pre.querySelector('.code-copy-button')) {
-      return;
-    }
-
-    const code = pre.querySelector('code');
-    if (!code) {
-      return;
-    }
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'code-copy-button';
-    button.textContent = 'Copy';
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(code.textContent ?? '');
-        button.textContent = 'Copied';
-        setTimeout(() => {
-          button.textContent = 'Copy';
-        }, 1200);
-      } catch {
-        button.textContent = 'Error';
-        setTimeout(() => {
-          button.textContent = 'Copy';
-        }, 1200);
-      }
-    });
-
-    pre.appendChild(button);
-  });
-};
-
-const observer = new MutationObserver(() => {
-  ensureCodeCopyButtons();
+window.addEventListener('beforeunload', () => {
+  editor = null;
 });
-observer.observe(milkRoot, { childList: true, subtree: true });
 
 sourceEditor.addEventListener('input', () => {
   if (inputFrozen) {
@@ -360,10 +360,5 @@ onHostMessage((payload: WebMessagePayload) => {
   }
 });
 
-void renderEditor('# AuraMark\n\nLoading...');
 setStatus('Waiting host init...');
 sendAck('Ready');
-
-if (!initialized) {
-  sendUpdate('# AuraMark\n\n');
-}

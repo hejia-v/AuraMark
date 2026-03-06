@@ -67,6 +67,7 @@
         <!-- File tree item style: chevron expander, icons, hover/selection feedback -->
         <Style x:Key="FileTreeItemStyle" TargetType="TreeViewItem">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="0" />
@@ -624,6 +625,7 @@
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="#434C5E"
+                               AutomationProperties.AutomationId="CurrentFileNameText"
                                Text="Untitled.md" />
                     <TextBlock x:Name="StateText"
                                FontSize="12"
@@ -709,12 +711,15 @@
                               Margin="0,6,0,0"
                               Style="{StaticResource FileTreeViewStyle}"
                               ItemsSource="{Binding FileTreeNodes}"
+                              AutomationProperties.AutomationId="WorkspaceFileTree"
                               SelectedItemChanged="OnFileTreeSelectionChanged" />
                 </Grid>
             </Border>
 
             <Grid Grid.Column="1">
-                <wv2:WebView2 x:Name="MainWebView" Margin="14,10,14,14" />
+                <Grid x:Name="WebViewHost" Margin="14,10,14,14">
+                    <wv2:WebView2 x:Name="MainWebView" />
+                </Grid>
 
                 <Border x:Name="LoadingOverlay"
                         Margin="30,26,30,30"
@@ -870,6 +875,7 @@
                              Foreground="#434C5E"
                              DisplayMemberPath="DisplayText"
                              ItemsSource="{Binding OutlineItems}"
+                             AutomationProperties.AutomationId="OutlineList"
                              SelectionChanged="OnOutlineSelectionChanged" />
                 </Grid>
             </Border>
