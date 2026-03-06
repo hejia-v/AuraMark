@@ -17,6 +17,8 @@ public sealed class FileTreeNode : INotifyPropertyChanged
 
     public bool IsDirectory { get; init; }
 
+    public bool IsSkill { get; init; }
+
     public string Extension => Path.GetExtension(Name).ToLowerInvariant();
 
     public bool IsExpanded

@@ -1532,7 +1532,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return found;
     }
 
-    private FileTreeNode BuildDirectoryNode(string directory, int depth)
+    private static readonly HashSet<string> SkillsParentNames =
+        new(StringComparer.OrdinalIgnoreCase) { ".agents", ".codex", ".claude" };
+
+    private FileTreeNode BuildDirectoryNode(string directory, int depth, bool isSkill = false)
     {
         var name = directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         name = Path.GetFileName(name);
@@ -1546,6 +1549,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Name = name,
             FullPath = directory,
             IsDirectory = true,
+            IsSkill = isSkill,
         };
 
         if (depth >= 4)
@@ -1553,11 +1557,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return node;
         }
 
+        // Children of .agents/skills, .codex/skills, .claude/skills are skill nodes.
+        var dirName = Path.GetFileName(directory) ?? "";
+        var parentDirName = Path.GetFileName(Path.GetDirectoryName(directory) ?? "") ?? "";
+        var childrenAreSkills = dirName.Equals("skills", StringComparison.OrdinalIgnoreCase)
+                                && SkillsParentNames.Contains(parentDirName);
+
         try
         {
             foreach (var subDirectory in Directory.EnumerateDirectories(directory).OrderBy(Path.GetFileName))
             {
-                var subNode = BuildDirectoryNode(subDirectory, depth + 1);
+                var subNode = BuildDirectoryNode(subDirectory, depth + 1, isSkill: childrenAreSkills);
                 if (subNode.Children.Count > 0)
                 {
                     node.Children.Add(subNode);
