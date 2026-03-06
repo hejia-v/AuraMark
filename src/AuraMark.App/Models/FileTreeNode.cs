@@ -1,6 +1,7 @@
-using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace AuraMark.App.Models;
@@ -15,6 +16,8 @@ public sealed class FileTreeNode : INotifyPropertyChanged
     public string FullPath { get; init; } = string.Empty;
 
     public bool IsDirectory { get; init; }
+
+    public string Extension => Path.GetExtension(Name).ToLowerInvariant();
 
     public bool IsExpanded
     {
