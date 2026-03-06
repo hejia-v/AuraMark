@@ -91,6 +91,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ObservableCollection<FileTreeNode> _fileTreeNodes = [];
     private readonly ObservableCollection<OutlineItem> _outlineItems = [];
+    private readonly ObservableCollection<QuickOpenEntry> _quickOpenEntries = [];
+    private readonly List<QuickOpenEntry> _quickOpenSourceEntries = [];
 
     private CoreWebView2? _webViewCore;
     private FileSystemWatcher? _fileWatcher;
@@ -137,12 +139,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int _documentLoadVersion;
     private bool _isDocumentRendering;
     private int? _pendingOutlineScrollIndex;
+    private int _quickOpenLoadVersion;
+    private bool _isQuickOpenLoading;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<FileTreeNode> FileTreeNodes => _fileTreeNodes;
 
     public ObservableCollection<OutlineItem> OutlineItems => _outlineItems;
+
+    public ObservableCollection<QuickOpenEntry> QuickOpenEntries => _quickOpenEntries;
 
     public MainWindow()
     {
@@ -159,7 +165,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Loaded += OnLoaded;
         Closing += OnClosing;
         LocationChanged += (_, _) => UpdateExpandPopupPositions();
-        SizeChanged += (_, _) => UpdateExpandPopupPositions();
+        SizeChanged += (_, _) =>
+        {
+            UpdateExpandPopupPositions();
+            UpdateQuickOpenPopupOffset();
+        };
         StateChanged += (_, _) => UpdateCollapsedHandlesVisibility();
     }
 
@@ -618,6 +628,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var modifiers = Keyboard.Modifiers;
 
+        if (QuickOpenPopup.IsOpen && e.Key == Key.Escape)
+        {
+            CloseQuickOpenPopup();
+            e.Handled = true;
+            return;
+        }
+
+        if (modifiers == ModifierKeys.Control && e.Key == Key.P)
+        {
+            ToggleQuickOpenPopup();
+            e.Handled = true;
+            return;
+        }
+
         if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.L)
         {
             ToggleSidebar();
@@ -742,6 +766,484 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (dialog.ShowDialog(this) == true)
         {
             await LoadDocumentAsync(dialog.FileName, createIfMissing: false);
+        }
+    }
+
+    private void OnQuickOpenButtonClicked(object sender, RoutedEventArgs e)
+    {
+        ToggleQuickOpenPopup();
+    }
+
+    private void ToggleQuickOpenPopup()
+    {
+        if (QuickOpenPopup.IsOpen)
+        {
+            CloseQuickOpenPopup();
+            return;
+        }
+
+        OpenQuickOpenPopup();
+    }
+
+    private void OpenQuickOpenPopup(string initialQuery = "")
+    {
+        QuickOpenPopup.IsOpen = true;
+        QuickOpenSearchTextBox.Text = initialQuery;
+        UpdateQuickOpenPlaceholderVisibility();
+        StartQuickOpenDataLoad();
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            QuickOpenSearchTextBox.Focus();
+            QuickOpenSearchTextBox.SelectAll();
+        }, DispatcherPriority.Input);
+    }
+
+    private void CloseQuickOpenPopup()
+    {
+        QuickOpenPopup.IsOpen = false;
+    }
+
+    private void OnQuickOpenPopupClosed(object? sender, EventArgs e)
+    {
+        Interlocked.Increment(ref _quickOpenLoadVersion);
+        _isQuickOpenLoading = false;
+        _quickOpenEntries.Clear();
+        _quickOpenSourceEntries.Clear();
+        QuickOpenSearchTextBox.Text = string.Empty;
+        UpdateQuickOpenPlaceholderVisibility();
+        UpdateQuickOpenVisualState();
+    }
+
+    private void OnQuickOpenPopupOpened(object? sender, EventArgs e)
+    {
+        UpdateQuickOpenPopupOffset();
+    }
+
+    private void OnQuickOpenSearchTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!QuickOpenPopup.IsOpen)
+        {
+            return;
+        }
+
+        UpdateQuickOpenPlaceholderVisibility();
+        ApplyQuickOpenFilter(QuickOpenSearchTextBox.Text);
+    }
+
+    private void OnQuickOpenSearchPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Down:
+                MoveQuickOpenSelection(1);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                MoveQuickOpenSelection(-1);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                if (QuickOpenResultsList.SelectedItem is QuickOpenEntry entry)
+                {
+                    _ = OpenQuickOpenEntryAsync(entry);
+                    e.Handled = true;
+                }
+                break;
+            case Key.Escape:
+                CloseQuickOpenPopup();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private async void OnQuickOpenResultsMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (FindVisualParent<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is not QuickOpenEntry entry)
+        {
+            return;
+        }
+
+        await OpenQuickOpenEntryAsync(entry);
+        e.Handled = true;
+    }
+
+    private void StartQuickOpenDataLoad()
+    {
+        _quickOpenSourceEntries.Clear();
+        foreach (var entry in BuildQuickOpenSeedEntries())
+        {
+            _quickOpenSourceEntries.Add(entry);
+        }
+
+        ApplyQuickOpenFilter(QuickOpenSearchTextBox.Text);
+        UpdateQuickOpenHelperText();
+
+        if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+        {
+            _isQuickOpenLoading = false;
+            UpdateQuickOpenVisualState();
+            return;
+        }
+
+        _isQuickOpenLoading = true;
+        QuickOpenLoadingText.Text = "Loading workspace files...";
+        UpdateQuickOpenHelperText();
+        UpdateQuickOpenVisualState();
+
+        var version = Interlocked.Increment(ref _quickOpenLoadVersion);
+        var workspaceRoot = _workspaceRoot;
+        var currentFilePath = _currentFilePath;
+        var seedPaths = _quickOpenSourceEntries
+            .Select(entry => entry.FullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        _ = LoadQuickOpenWorkspaceEntriesAsync(version, workspaceRoot, currentFilePath, seedPaths);
+    }
+
+    private List<QuickOpenEntry> BuildQuickOpenSeedEntries()
+    {
+        var entries = new List<QuickOpenEntry>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (File.Exists(_currentFilePath))
+        {
+            TryCreateQuickOpenEntry(_currentFilePath, "Current", 0, isCurrent: true, seenPaths: seen, target: entries);
+        }
+
+        foreach (var entry in LoadRecentEntries())
+        {
+            if (entry.IsFolder || !File.Exists(entry.Path))
+            {
+                continue;
+            }
+
+            TryCreateQuickOpenEntry(entry.Path, "Recent", 2, isCurrent: false, seenPaths: seen, target: entries);
+        }
+
+        return entries;
+    }
+
+    private async Task LoadQuickOpenWorkspaceEntriesAsync(
+        int version,
+        string workspaceRoot,
+        string currentFilePath,
+        HashSet<string> seenPaths)
+    {
+        var workspaceEntries = await Task.Run(() =>
+        {
+            var entries = new List<QuickOpenEntry>();
+            foreach (var file in EnumerateQuickOpenWorkspaceFiles(workspaceRoot, currentFilePath))
+            {
+                TryCreateQuickOpenEntry(
+                    file,
+                    "Workspace",
+                    1,
+                    isCurrent: file.Equals(currentFilePath, StringComparison.OrdinalIgnoreCase),
+                    seenPaths: seenPaths,
+                    target: entries,
+                    workspaceRootOverride: workspaceRoot);
+            }
+
+            return entries;
+        });
+
+        if (version != Volatile.Read(ref _quickOpenLoadVersion) || !QuickOpenPopup.IsOpen)
+        {
+            return;
+        }
+
+        foreach (var entry in workspaceEntries)
+        {
+            _quickOpenSourceEntries.Add(entry);
+        }
+
+        _isQuickOpenLoading = false;
+        UpdateQuickOpenHelperText();
+        ApplyQuickOpenFilter(QuickOpenSearchTextBox.Text);
+        UpdateQuickOpenVisualState();
+    }
+
+    private static void TryCreateQuickOpenEntry(
+        string path,
+        string sourceLabel,
+        int sortRank,
+        bool isCurrent,
+        HashSet<string> seenPaths,
+        ICollection<QuickOpenEntry> target,
+        string? workspaceRootOverride = null)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (!seenPaths.Add(fullPath))
+        {
+            return;
+        }
+
+        var detailText = BuildQuickOpenDetailText(fullPath, workspaceRootOverride);
+        target.Add(new QuickOpenEntry
+        {
+            FullPath = fullPath,
+            DisplayName = Path.GetFileName(fullPath),
+            DetailText = detailText,
+            SourceLabel = sourceLabel,
+            SearchText = $"{Path.GetFileName(fullPath)} {detailText} {fullPath.Replace('\\', '/')}",
+            SortRank = sortRank,
+            IsCurrent = isCurrent,
+        });
+    }
+
+    private static IEnumerable<string> EnumerateQuickOpenWorkspaceFiles(string root, string currentFilePath)
+    {
+        var stack = new Stack<string>();
+        stack.Push(root);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+
+            IEnumerable<string> directories = [];
+            try
+            {
+                directories = Directory.EnumerateDirectories(current)
+                    .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // Ignore inaccessible directories.
+            }
+
+            foreach (var directory in directories)
+            {
+                if (ShouldSkipQuickOpenDirectory(directory))
+                {
+                    continue;
+                }
+
+                stack.Push(directory);
+            }
+
+            IEnumerable<string> files = [];
+            try
+            {
+                files = Directory.EnumerateFiles(current)
+                    .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // Ignore inaccessible files.
+            }
+
+            foreach (var file in files)
+            {
+                if (ShouldIncludeInQuickOpen(file, currentFilePath))
+                {
+                    yield return file;
+                }
+            }
+        }
+    }
+
+    private static bool ShouldIncludeInQuickOpen(string filePath, string currentFilePath)
+    {
+        if (filePath.Equals(currentFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return MarkdownExtensions.Contains(Path.GetExtension(filePath));
+    }
+
+    private static bool ShouldSkipQuickOpenDirectory(string directory)
+    {
+        var name = Path.GetFileName(directory);
+        return name.Equals(".git", StringComparison.OrdinalIgnoreCase)
+               || name.Equals(".vs", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("bin", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("obj", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("node_modules", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string BuildQuickOpenDetailText(string fullPath)
+        => BuildQuickOpenDetailText(fullPath, _workspaceRoot);
+
+    private static string BuildQuickOpenDetailText(string fullPath, string? workspaceRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(workspaceRoot) &&
+            Directory.Exists(workspaceRoot) &&
+            IsPathUnderRoot(fullPath, workspaceRoot))
+        {
+            return Path.GetRelativePath(workspaceRoot, fullPath).Replace('\\', '/');
+        }
+
+        return fullPath.Replace('\\', '/');
+    }
+
+    private static bool IsPathUnderRoot(string path, string root)
+    {
+        var normalizedRoot = Path.GetFullPath(root)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var normalizedPath = Path.GetFullPath(path);
+        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyQuickOpenFilter(string query)
+    {
+        var filteredEntries = GetFilteredQuickOpenEntries(query).Take(80).ToList();
+
+        _quickOpenEntries.Clear();
+        foreach (var entry in filteredEntries)
+        {
+            _quickOpenEntries.Add(entry);
+        }
+
+        QuickOpenResultsList.Visibility = _quickOpenEntries.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        QuickOpenEmptyStateText.Text = string.IsNullOrWhiteSpace(query)
+            ? "No files available."
+            : $"No matches for \"{query.Trim()}\".";
+
+        if (_quickOpenEntries.Count > 0)
+        {
+            QuickOpenResultsList.SelectedIndex = 0;
+            QuickOpenResultsList.ScrollIntoView(QuickOpenResultsList.SelectedItem);
+        }
+
+        UpdateQuickOpenVisualState();
+    }
+
+    private IEnumerable<QuickOpenEntry> GetFilteredQuickOpenEntries(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return _quickOpenSourceEntries
+                .OrderBy(entry => entry.SortRank)
+                .ThenByDescending(entry => entry.IsCurrent)
+                .ThenBy(entry => entry.DisplayName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var trimmed = query.Trim();
+        var terms = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return _quickOpenSourceEntries
+            .Select(entry => new { Entry = entry, Score = GetQuickOpenScore(entry, trimmed, terms) })
+            .Where(item => item.Score < int.MaxValue)
+            .OrderBy(item => item.Score)
+            .ThenBy(item => item.Entry.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Select(item => item.Entry);
+    }
+
+    private static int GetQuickOpenScore(QuickOpenEntry entry, string rawQuery, string[] terms)
+    {
+        foreach (var term in terms)
+        {
+            if (entry.SearchText.IndexOf(term, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return int.MaxValue;
+            }
+        }
+
+        if (entry.DisplayName.Equals(rawQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            return entry.SortRank * 10;
+        }
+
+        var fileNameIndex = entry.DisplayName.IndexOf(rawQuery, StringComparison.OrdinalIgnoreCase);
+        if (fileNameIndex >= 0)
+        {
+            return entry.SortRank * 10 + fileNameIndex;
+        }
+
+        var detailIndex = entry.DetailText.IndexOf(rawQuery, StringComparison.OrdinalIgnoreCase);
+        if (detailIndex >= 0)
+        {
+            return 100 + entry.SortRank * 10 + detailIndex;
+        }
+
+        return 200 + entry.SortRank * 10 + entry.SearchText.IndexOf(terms[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void MoveQuickOpenSelection(int delta)
+    {
+        if (_quickOpenEntries.Count == 0)
+        {
+            return;
+        }
+
+        var index = QuickOpenResultsList.SelectedIndex;
+        if (index < 0)
+        {
+            index = 0;
+        }
+        else
+        {
+            index = Math.Clamp(index + delta, 0, _quickOpenEntries.Count - 1);
+        }
+
+        QuickOpenResultsList.SelectedIndex = index;
+        QuickOpenResultsList.ScrollIntoView(QuickOpenResultsList.SelectedItem);
+    }
+
+    private void UpdateQuickOpenPlaceholderVisibility()
+    {
+        QuickOpenPlaceholderText.Visibility = string.IsNullOrWhiteSpace(QuickOpenSearchTextBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void UpdateQuickOpenHelperText()
+    {
+        if (_isQuickOpenLoading)
+        {
+            QuickOpenHelperText.Text = "Indexing workspace files in the background";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_workspaceRoot) && Directory.Exists(_workspaceRoot))
+        {
+            var workspaceName = Path.GetFileName(_workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            QuickOpenHelperText.Text = $"Open markdown files in {workspaceName}";
+            return;
+        }
+
+        QuickOpenHelperText.Text = "Open current or recent markdown files";
+    }
+
+    private void UpdateQuickOpenVisualState()
+    {
+        QuickOpenLoadingOverlay.Visibility = _isQuickOpenLoading ? Visibility.Visible : Visibility.Collapsed;
+        QuickOpenEmptyStateText.Visibility =
+            !_isQuickOpenLoading && _quickOpenEntries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateQuickOpenPopupOffset()
+    {
+        if (QuickOpenButton is null || QuickOpenPopupSurface is null)
+        {
+            return;
+        }
+
+        var buttonWidth = QuickOpenButton.ActualWidth;
+        var popupWidth = QuickOpenPopupSurface.ActualWidth;
+        if (buttonWidth <= 0 || popupWidth <= 0)
+        {
+            return;
+        }
+
+        QuickOpenPopup.HorizontalOffset = (buttonWidth - popupWidth) / 2d;
+    }
+
+    private async Task OpenQuickOpenEntryAsync(QuickOpenEntry entry)
+    {
+        CloseQuickOpenPopup();
+
+        try
+        {
+            await LoadDocumentAsync(entry.FullPath, createIfMissing: false);
+        }
+        catch (Exception ex)
+        {
+            ShowSoftError($"Open failed: {ex.Message}");
+            ShowLoading(false);
+            SetState(EditorState.Idle);
         }
     }
 

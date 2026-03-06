@@ -506,6 +506,156 @@
             </Setter>
         </Style>
 
+        <Style x:Key="QuickOpenButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="340" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#CDD6E1" />
+            <Setter Property="Background" Value="#FAFBFC" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#FFFFFF" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#B9C5D2" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#EDF2F7" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#AEBCCB" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuickOpenResultItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBg"
+                                Background="Transparent"
+                                CornerRadius="8"
+                                Padding="10,8">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBg" Property="Background" Value="#F5F7FA" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBg" Property="Background" Value="#EAF0F7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuickOpenScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid Width="8">
+                            <Border x:Name="ThumbBody"
+                                    Margin="0,2"
+                                    Background="#A7B6C7"
+                                    BorderBrush="#F7FAFD"
+                                    BorderThickness="1"
+                                    CornerRadius="4">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8"
+                                                      ShadowDepth="0"
+                                                      Opacity="0.10"
+                                                      Color="#1E293B" />
+                                </Border.Effect>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbBody" Property="Background" Value="#90A3B8" />
+                                <Setter TargetName="ThumbBody" Property="BorderBrush" Value="#FCFDFE" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbBody" Property="Background" Value="#7A90A8" />
+                                <Setter TargetName="ThumbBody" Property="BorderBrush" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuickOpenVerticalScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Margin" Value="8,4,0,4" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Border x:Name="TrackRail"
+                                    Width="8"
+                                    HorizontalAlignment="Center"
+                                    Margin="0,2"
+                                    Background="#EEF3F7"
+                                    CornerRadius="4"
+                                    Opacity="0.9" />
+                            <Track x:Name="PART_Track"
+                                   IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                  Opacity="0"
+                                                  Focusable="False" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource QuickOpenScrollThumbStyle}" />
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                  Opacity="0"
+                                                  Focusable="False" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TrackRail" Property="Background" Value="#E5ECF3" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="14" />
+                    <Setter Property="Width" Value="Auto" />
+                    <Setter Property="Margin" Value="0,6,0,0" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- 窗口最小化按钮 Style -->
         <!-- 图标：0f510f.svg（水平线，20×20） -->
         <Style x:Key="WindowMinimizeButton" TargetType="Button">
@@ -836,21 +986,277 @@
                     </MenuItem>
                 </Menu>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <TextBlock x:Name="FileNameText"
-                               Margin="0,0,12,0"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Foreground="#434C5E"
-                               AutomationProperties.AutomationId="CurrentFileNameText"
-                               Visibility="Collapsed"
-                               Text="Untitled.md" />
-                    <TextBlock x:Name="StateText"
-                               FontSize="12"
-                               Foreground="#8C434C5E"
-                               Visibility="Collapsed"
-                               Text="Idle" />
-                </StackPanel>
+                <Grid Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="FileNameText"
+                                   Margin="0,0,12,0"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#434C5E"
+                                   AutomationProperties.AutomationId="CurrentFileNameText"
+                                   Visibility="Collapsed"
+                                   Text="Untitled.md" />
+                        <TextBlock x:Name="StateText"
+                                   FontSize="12"
+                                   Foreground="#8C434C5E"
+                                   Visibility="Collapsed"
+                                   Text="Idle" />
+                    </StackPanel>
+
+                    <Grid Grid.Column="1"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+                        <Button x:Name="QuickOpenButton"
+                                Style="{StaticResource QuickOpenButtonStyle}"
+                                Click="OnQuickOpenButtonClicked"
+                                ToolTip="Quick Open (Ctrl+P)"
+                                AutomationProperties.AutomationId="QuickOpenButton"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Grid Margin="10,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Path Width="12"
+                                      Height="12"
+                                      Margin="0,0,8,0"
+                                      VerticalAlignment="Center"
+                                      Stretch="Uniform"
+                                      Fill="#738196"
+                                      Data="M9.946 9.946a.75.75 0 1 1 1.06 1.06l-2.12-2.12a4.75 4.75 0 1 1 1.06-1.06zM7.75 4.75a3 3 0 1 0-6 0a3 3 0 0 0 6 0" />
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontSize="12"
+                                           Foreground="#677489"
+                                           Text="Search files" />
+                                <Border Grid.Column="2"
+                                        Padding="5,1"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Background="#EEF2F7"
+                                        BorderBrush="#D8E0EA"
+                                        BorderThickness="1"
+                                        CornerRadius="4">
+                                    <TextBlock FontSize="10"
+                                               FontWeight="SemiBold"
+                                               Foreground="#7A879A"
+                                               Text="Ctrl+P" />
+                                </Border>
+                            </Grid>
+                        </Button>
+
+                        <Popup x:Name="QuickOpenPopup"
+                               PlacementTarget="{Binding ElementName=QuickOpenButton}"
+                               Placement="Bottom"
+                               VerticalOffset="8"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade"
+                               StaysOpen="False"
+                               Opened="OnQuickOpenPopupOpened"
+                               Closed="OnQuickOpenPopupClosed">
+                            <Border Width="460"
+                                    x:Name="QuickOpenPopupSurface"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#DCE4EE"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000"
+                                                      Opacity="0.12"
+                                                      BlurRadius="24"
+                                                      ShadowDepth="6"
+                                                      Direction="270" />
+                                </Border.Effect>
+                                <Grid MaxHeight="420">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <Border Background="#F5F7FA"
+                                            BorderBrush="#DCE4EE"
+                                            BorderThickness="1"
+                                            CornerRadius="9"
+                                            Padding="10,7">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Path Width="13"
+                                                  Height="13"
+                                                  Margin="0,0,8,0"
+                                                  VerticalAlignment="Center"
+                                                  Stretch="Uniform"
+                                                  Fill="#738196"
+                                                  Data="M9.946 9.946a.75.75 0 1 1 1.06 1.06l-2.12-2.12a4.75 4.75 0 1 1 1.06-1.06zM7.75 4.75a3 3 0 1 0-6 0a3 3 0 0 0 6 0" />
+                                            <Grid Grid.Column="1">
+                                                <TextBox x:Name="QuickOpenSearchTextBox"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         FontSize="13"
+                                                         Foreground="#2F3947"
+                                                         VerticalContentAlignment="Center"
+                                                         TextChanged="OnQuickOpenSearchTextChanged"
+                                                         PreviewKeyDown="OnQuickOpenSearchPreviewKeyDown" />
+                                                <TextBlock x:Name="QuickOpenPlaceholderText"
+                                                           Margin="1,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="#8A96A7"
+                                                           IsHitTestVisible="False"
+                                                           Text="Type a file name or path" />
+                                            </Grid>
+                                            <TextBlock Grid.Column="2"
+                                                       Margin="8,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="11"
+                                                       Foreground="#8A96A7"
+                                                       Text="Esc" />
+                                        </Grid>
+                                    </Border>
+
+                                    <TextBlock x:Name="QuickOpenHelperText"
+                                               Grid.Row="1"
+                                               Margin="2,8,2,8"
+                                               FontSize="11"
+                                               Foreground="#7C8898"
+                                               Text="Open files from the current workspace" />
+
+                                    <Border Grid.Row="2"
+                                            Background="#FFFFFF"
+                                            CornerRadius="10">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <TextBlock x:Name="QuickOpenEmptyStateText"
+                                                       Margin="16"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="12"
+                                                       Foreground="#8A96A7"
+                                                       Text="No files found."
+                                                       Visibility="Collapsed" />
+                                            <ListBox x:Name="QuickOpenResultsList"
+                                                     Grid.RowSpan="2"
+                                                     Background="Transparent"
+                                                     BorderThickness="0"
+                                                     ItemContainerStyle="{StaticResource QuickOpenResultItemStyle}"
+                                                     ItemsSource="{Binding QuickOpenEntries}"
+                                                     PreviewMouseLeftButtonUp="OnQuickOpenResultsMouseLeftButtonUp"
+                                                     SelectionMode="Single">
+                                                <ListBox.Template>
+                                                    <ControlTemplate TargetType="ListBox">
+                                                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                                      HorizontalScrollBarVisibility="Disabled"
+                                                                      Focusable="False">
+                                                            <ScrollViewer.Resources>
+                                                                <Style TargetType="ScrollBar" BasedOn="{StaticResource QuickOpenVerticalScrollBarStyle}" />
+                                                            </ScrollViewer.Resources>
+                                                            <ItemsPresenter />
+                                                        </ScrollViewer>
+                                                    </ControlTemplate>
+                                                </ListBox.Template>
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type models:QuickOpenEntry}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <Border Width="28"
+                                                                    Height="28"
+                                                                    Margin="0,0,10,0"
+                                                                    VerticalAlignment="Center"
+                                                                    Background="#F3F6F9"
+                                                                    BorderBrush="#E1E7EF"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="7">
+                                                                <Path Width="14"
+                                                                      Height="14"
+                                                                      VerticalAlignment="Center"
+                                                                      HorizontalAlignment="Center"
+                                                                      Stretch="Uniform"
+                                                                      Fill="#6F7F93"
+                                                                      Data="{StaticResource FileIconGeometry}" />
+                                                            </Border>
+
+                                                            <StackPanel Grid.Column="1"
+                                                                        VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding DisplayName}"
+                                                                           FontSize="13"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="#2F3947"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Text="{Binding DetailText}"
+                                                                           Margin="0,2,0,0"
+                                                                           FontSize="11"
+                                                                           Foreground="#7F8A9A"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+
+                                                            <Border Grid.Column="2"
+                                                                    Margin="10,0,0,0"
+                                                                    Padding="7,2"
+                                                                    VerticalAlignment="Top"
+                                                                    Background="#EEF2F7"
+                                                                    BorderBrush="#DAE2EB"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="10">
+                                                                <TextBlock Text="{Binding SourceLabel}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="#738196" />
+                                                            </Border>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+
+                                            <Border x:Name="QuickOpenLoadingOverlay"
+                                                    Grid.RowSpan="2"
+                                                    Background="#F9FBFDE6"
+                                                    CornerRadius="10"
+                                                    Visibility="Collapsed">
+                                                <StackPanel HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center">
+                                                    <ProgressBar x:Name="QuickOpenLoadingProgress"
+                                                                 Width="132"
+                                                                 Height="3"
+                                                                 Margin="0,0,0,10"
+                                                                 Foreground="#7890AA"
+                                                                 Background="#DFE8F1"
+                                                                 IsIndeterminate="True" />
+                                                    <TextBlock x:Name="QuickOpenLoadingText"
+                                                               HorizontalAlignment="Center"
+                                                               FontSize="12"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="#607286"
+                                                               Text="Loading files..." />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </Grid>
 
                 <StackPanel Grid.Column="2"
                             Orientation="Horizontal"
