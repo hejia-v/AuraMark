@@ -46,8 +46,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const int ImmersiveTypingThresholdMilliseconds = 3000;
     private const int UiAnimationMilliseconds = 150;
     private const int E2eLargeFileDelayMilliseconds = 500;
-    private const double SidebarExpandedWidth = 280;
-    private const double OutlineExpandedWidth = 300;
+    private double _sidebarExpandedWidth = 280;
+    private double _outlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
     private const int MaxRecentEntries = 15;
@@ -57,6 +57,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static readonly string LastWorkspaceFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "last_workspace.txt");
+    private static readonly string SettingsFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AuraMark", "settings.json");
 
     // Path data extracted from res/sprites-core-symbols/0623c1.svg (generic file/document)
     private const string FileIconPathData =
@@ -117,6 +120,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _externalReloadPending;
     private bool _hasExternalConflict;
     private bool _inputFrozen;
+    private bool _isDraggingSidebar;
+    private double _sidebarDragStartWindowX;
+    private double _sidebarDragStartWidth;
+    private bool _isDraggingOutline;
+    private double _outlineDragStartWindowX;
+    private double _outlineDragStartWidth;
     private bool _e2eMode;
     private bool _e2eStartupPending;
     private bool _e2eForceImmersive;
@@ -203,6 +212,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _isSidebarVisible = true;
         _isOutlineVisible = true;
+        LoadSettings();
         ApplySidebarVisualState(_isSidebarVisible, immediate: true);
         ApplyOutlineVisualState(_isOutlineVisible, immediate: true);
         ApplyTopBarVisualState(true, immediate: true);
@@ -373,6 +383,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return File.ReadAllText(LastWorkspaceFilePath).Trim();
         }
         catch { return string.Empty; }
+    }
+
+    private void LoadSettings()
+    {
+        try
+        {
+            if (!File.Exists(SettingsFilePath)) return;
+            var json = File.ReadAllText(SettingsFilePath);
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, _jsonOptions);
+            if (settings?.SidebarWidth is > 0)
+                _sidebarExpandedWidth = Math.Clamp(settings.SidebarWidth, 160, 600);
+            if (settings?.OutlineWidth is > 0)
+                _outlineExpandedWidth = Math.Clamp(settings.OutlineWidth, 160, 600);
+        }
+        catch { /* best effort */ }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsFilePath)!);
+            var settings = new AppSettings { SidebarWidth = _sidebarExpandedWidth, OutlineWidth = _outlineExpandedWidth };
+            File.WriteAllText(SettingsFilePath, JsonSerializer.Serialize(settings, _jsonOptions));
+        }
+        catch { /* best effort */ }
     }
 
     private void AddToRecent(string path, bool isFolder)
@@ -1692,13 +1728,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplySidebarVisualState(bool visible, bool immediate = false)
     {
-        var targetWidth = visible ? SidebarExpandedWidth : 0d;
+        var targetWidth = visible ? _sidebarExpandedWidth : 0d;
+
+        if (!visible)
+            SidebarResizeHandle.Visibility = Visibility.Collapsed;
 
         if (immediate)
         {
             SidebarContainer.Width = targetWidth;
             SidebarContainer.Opacity = visible ? 1 : 0;
             SidebarContainer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (visible)
+                SidebarResizeHandle.Visibility = Visibility.Visible;
             UpdateCollapsedHandlesVisibility();
             return;
         }
@@ -1719,6 +1760,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 SidebarContainer.Visibility = Visibility.Collapsed;
             }
+            else
+            {
+                SidebarResizeHandle.Visibility = Visibility.Visible;
+            }
         };
 
         SidebarContainer.BeginAnimation(WidthProperty, widthAnimation);
@@ -1728,13 +1773,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyOutlineVisualState(bool visible, bool immediate = false)
     {
-        var targetWidth = visible ? OutlineExpandedWidth : 0d;
+        var targetWidth = visible ? _outlineExpandedWidth : 0d;
+
+        if (!visible)
+            OutlineResizeHandle.Visibility = Visibility.Collapsed;
 
         if (immediate)
         {
             OutlineContainer.Width = targetWidth;
             OutlineContainer.Opacity = visible ? 1 : 0;
             OutlineContainer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (visible)
+                OutlineResizeHandle.Visibility = Visibility.Visible;
             UpdateCollapsedHandlesVisibility();
             return;
         }
@@ -1755,11 +1805,107 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 OutlineContainer.Visibility = Visibility.Collapsed;
             }
+            else
+            {
+                OutlineResizeHandle.Visibility = Visibility.Visible;
+            }
         };
 
         OutlineContainer.BeginAnimation(WidthProperty, widthAnimation);
         FadeElement(OutlineContainer, visible);
         UpdateCollapsedHandlesVisibility();
+    }
+
+    private void OnSidebarResizeMouseEnter(object sender, MouseEventArgs e)
+    {
+        SidebarResizeGrip.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
+    }
+
+    private void OnSidebarResizeMouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_isDraggingSidebar) return;
+        SidebarResizeGrip.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)));
+    }
+
+    private void OnSidebarResizeMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _isDraggingSidebar = true;
+        _sidebarDragStartWindowX = e.GetPosition(this).X;
+        SidebarContainer.BeginAnimation(WidthProperty, null);
+        _sidebarDragStartWidth = SidebarContainer.ActualWidth;
+        SidebarContainer.Width = _sidebarDragStartWidth;
+        ((UIElement)sender).CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnSidebarResizeMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isDraggingSidebar) return;
+        var delta = e.GetPosition(this).X - _sidebarDragStartWindowX;
+        var newWidth = Math.Clamp(_sidebarDragStartWidth + delta, 160, 600);
+        _sidebarExpandedWidth = newWidth;
+        SidebarContainer.Width = newWidth;
+        e.Handled = true;
+    }
+
+    private void OnSidebarResizeMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isDraggingSidebar) return;
+        _isDraggingSidebar = false;
+        ((UIElement)sender).ReleaseMouseCapture();
+        SaveSettings();
+        if (!SidebarResizeHandle.IsMouseOver)
+            SidebarResizeGrip.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)));
+        e.Handled = true;
+    }
+
+    private void OnOutlineResizeMouseEnter(object sender, MouseEventArgs e)
+    {
+        OutlineResizeGrip.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
+    }
+
+    private void OnOutlineResizeMouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_isDraggingOutline) return;
+        OutlineResizeGrip.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)));
+    }
+
+    private void OnOutlineResizeMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _isDraggingOutline = true;
+        _outlineDragStartWindowX = e.GetPosition(this).X;
+        OutlineContainer.BeginAnimation(WidthProperty, null);
+        _outlineDragStartWidth = OutlineContainer.ActualWidth;
+        OutlineContainer.Width = _outlineDragStartWidth;
+        ((UIElement)sender).CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnOutlineResizeMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isDraggingOutline) return;
+        var delta = e.GetPosition(this).X - _outlineDragStartWindowX;
+        var newWidth = Math.Clamp(_outlineDragStartWidth - delta, 160, 600);
+        _outlineExpandedWidth = newWidth;
+        OutlineContainer.Width = newWidth;
+        e.Handled = true;
+    }
+
+    private void OnOutlineResizeMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isDraggingOutline) return;
+        _isDraggingOutline = false;
+        ((UIElement)sender).ReleaseMouseCapture();
+        SaveSettings();
+        if (!OutlineResizeHandle.IsMouseOver)
+            OutlineResizeGrip.BeginAnimation(OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(120)));
+        e.Handled = true;
+    }
+
+    private sealed class AppSettings
+    {
+        public double SidebarWidth { get; set; }
+        public double OutlineWidth { get; set; }
     }
 
     private void UpdateCollapsedHandlesVisibility()

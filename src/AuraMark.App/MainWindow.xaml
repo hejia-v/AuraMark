@@ -933,6 +933,56 @@
                 </Grid>
             </Border>
 
+            <!-- Sidebar resize handle -->
+            <Border x:Name="SidebarResizeHandle"
+                    Grid.Column="1"
+                    Width="12"
+                    Margin="-6,0,0,0"
+                    HorizontalAlignment="Left"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    Panel.ZIndex="100"
+                    Visibility="Collapsed"
+                    MouseEnter="OnSidebarResizeMouseEnter"
+                    MouseLeave="OnSidebarResizeMouseLeave"
+                    MouseLeftButtonDown="OnSidebarResizeMouseDown"
+                    MouseLeftButtonUp="OnSidebarResizeMouseUp"
+                    MouseMove="OnSidebarResizeMouseMove">
+                <Border x:Name="SidebarResizeGrip"
+                        Width="4"
+                        Height="32"
+                        CornerRadius="2"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="#9AA4B0"
+                        Opacity="0" />
+            </Border>
+
+            <!-- Outline resize handle -->
+            <Border x:Name="OutlineResizeHandle"
+                    Grid.Column="1"
+                    Width="12"
+                    Margin="0,0,-6,0"
+                    HorizontalAlignment="Right"
+                    Background="Transparent"
+                    Cursor="SizeWE"
+                    Panel.ZIndex="100"
+                    Visibility="Collapsed"
+                    MouseEnter="OnOutlineResizeMouseEnter"
+                    MouseLeave="OnOutlineResizeMouseLeave"
+                    MouseLeftButtonDown="OnOutlineResizeMouseDown"
+                    MouseLeftButtonUp="OnOutlineResizeMouseUp"
+                    MouseMove="OnOutlineResizeMouseMove">
+                <Border x:Name="OutlineResizeGrip"
+                        Width="4"
+                        Height="32"
+                        CornerRadius="2"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="#9AA4B0"
+                        Opacity="0" />
+            </Border>
+
             <Grid Grid.Column="1">
                 <Grid x:Name="WebViewHost" Margin="14,10,14,14">
                     <wv2:WebView2 x:Name="MainWebView" />
