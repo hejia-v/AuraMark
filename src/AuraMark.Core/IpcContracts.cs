@@ -31,6 +31,7 @@ public static class IpcCommands
     public const string ScrollToHeading = "ScrollToHeading";
     public const string SetImmersive = "SetImmersive";
     public const string InsertCodeBlock = "InsertCodeBlock";
+    public const string SetTitle = "SetTitle";
 }
 
 public static class IpcLimits

@@ -843,10 +843,12 @@
                                FontWeight="SemiBold"
                                Foreground="#434C5E"
                                AutomationProperties.AutomationId="CurrentFileNameText"
+                               Visibility="Collapsed"
                                Text="Untitled.md" />
                     <TextBlock x:Name="StateText"
                                FontSize="12"
                                Foreground="#8C434C5E"
+                               Visibility="Collapsed"
                                Text="Idle" />
                 </StackPanel>
 
@@ -984,7 +986,7 @@
             </Border>
 
             <Grid Grid.Column="1">
-                <Grid x:Name="WebViewHost" Margin="14,10,14,14">
+                <Grid x:Name="WebViewHost">
                     <wv2:WebView2 x:Name="MainWebView" />
                 </Grid>
 

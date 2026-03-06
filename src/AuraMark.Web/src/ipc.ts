@@ -21,7 +21,8 @@ export type HostCommand = {
     | 'E2eSetMarkdown'
     | 'ScrollToHeading'
     | 'SetImmersive'
-    | 'InsertCodeBlock';
+    | 'InsertCodeBlock'
+    | 'SetTitle';
   content?: string;
   index?: number;
   value?: boolean;

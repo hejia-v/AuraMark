@@ -945,6 +945,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SendCommand(new HostCommand { Name = IpcCommands.ReplaceAll, Content = _queuedDocumentForWeb });
         }
 
+        if (!string.IsNullOrEmpty(_currentFilePath))
+        {
+            SendCommand(new HostCommand { Name = IpcCommands.SetTitle, Content = Path.GetFileName(_currentFilePath) });
+        }
+
         _queuedDocumentForWeb = string.Empty;
     }
 

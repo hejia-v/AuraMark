@@ -16,9 +16,20 @@ const shell = document.createElement('div');
 shell.className = 'editor-shell';
 host.appendChild(shell);
 
+const titleEl = document.createElement('div');
+titleEl.className = 'doc-title';
+shell.appendChild(titleEl);
+
+const titleTextEl = document.createElement('span');
+titleTextEl.textContent = 'Untitled.md';
+titleEl.appendChild(titleTextEl);
+
+const dotEl = document.createElement('span');
+dotEl.className = 'doc-status-dot';
+titleEl.appendChild(dotEl);
+
 const statusBar = document.createElement('div');
 statusBar.className = 'render-status';
-statusBar.textContent = 'Loading...';
 shell.appendChild(statusBar);
 
 const stage = document.createElement('div');
@@ -41,6 +52,7 @@ let sourceMode = false;
 let inputFrozen = false;
 let suppressOutbound = false;
 let currentMarkdown = '';
+let savedMarkdown = '';
 let applySequence = 0;
 let renderQueue: Promise<void> = Promise.resolve();
 
@@ -75,8 +87,14 @@ const sendUpdate = (markdown: string) => {
   });
 };
 
-const setStatus = (text: string) => {
-  statusBar.textContent = text;
+const updateDirtyDot = () => {
+  const dirty = currentMarkdown !== savedMarkdown;
+  dotEl.className = 'doc-status-dot' + (dirty ? ' state-dirty' : '');
+  dotEl.title = dirty ? '有未保存的修改' : '';
+};
+
+const setStatus = (_text: string) => {
+  // no-op; dot is driven by content comparison
 };
 
 const renderEditor = async (markdown: string, sequence: number) => {
@@ -128,6 +146,7 @@ const renderEditor = async (markdown: string, sequence: number) => {
         }
 
         sendUpdate(markdownText);
+        updateDirtyDot();
       });
     });
 
@@ -156,8 +175,9 @@ const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) =
   suppressOutbound = true;
   try {
     currentMarkdown = markdown;
+    savedMarkdown = markdown;
     sourceEditor.value = markdown;
-    setStatus('Rendering...');
+    updateDirtyDot();
 
     if (!sourceMode || fromSourceToggle) {
       await renderEditor(markdown, sequence);
@@ -275,6 +295,9 @@ const handleHostCommand = (command: HostCommand) => {
     case 'InsertCodeBlock':
       insertCodeBlock();
       return;
+    case 'SetTitle':
+      titleTextEl.textContent = command.content ?? 'Untitled.md';
+      return;
     case 'ToggleSidebar':
       sendToHost({
         type: 'Command',
@@ -296,6 +319,7 @@ sourceEditor.addEventListener('input', () => {
 
   currentMarkdown = sourceEditor.value;
   sendUpdate(currentMarkdown);
+  updateDirtyDot();
 });
 
 window.addEventListener('keydown', (ev) => {
@@ -341,12 +365,6 @@ onHostMessage((payload: WebMessagePayload) => {
   }
 
   if (payload.type === 'Ack' && payload.content === 'Saved') {
-    setStatus('Saved');
-    setTimeout(() => {
-      if (!inputFrozen) {
-        setStatus('Editing');
-      }
-    }, 300);
     return;
   }
 

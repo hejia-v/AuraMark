@@ -11,7 +11,8 @@
       "Bash(tail:*)",
       "Bash(test:*)",
       "Read(//c/Dev/AuraMark/res/sprites-core-symbols/**)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm run:*)"
     ]
   }
 }
