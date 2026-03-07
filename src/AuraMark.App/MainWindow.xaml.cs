@@ -262,8 +262,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "TooltipBack") => "后退",
             (AppLanguage.Chinese, "TooltipForward") => "前进",
             (AppLanguage.Chinese, "SkillsButtonTooltip") => "技能",
+            (AppLanguage.Chinese, "WorkspaceAgentsTooltip") => "打开 AGENTS.md",
+            (AppLanguage.Chinese, "WorkspaceClaudeTooltip") => "打开 CLAUDE.md",
             (AppLanguage.Chinese, "SkillsPopupTitle") => "技能文档",
             (AppLanguage.Chinese, "SkillsEmpty") => "未找到技能文档。",
+            (AppLanguage.Chinese, "WorkspaceRootUnavailable") => "当前没有可用的工作区根目录。",
+            (AppLanguage.Chinese, "WorkspaceAgentsMissing") => "当前工作区根目录下不存在 AGENTS.md。",
+            (AppLanguage.Chinese, "WorkspaceClaudeMissing") => "当前工作区根目录下不存在 CLAUDE.md。",
             (AppLanguage.Chinese, "LoadingDocument") => "正在加载文档...",
             (AppLanguage.Chinese, "LoadingLargeFile") => "正在加载大文件...",
             (AppLanguage.Chinese, "Rendering") => "正在渲染...",
@@ -332,8 +337,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "TooltipBack") => "Back",
             (AppLanguage.English, "TooltipForward") => "Forward",
             (AppLanguage.English, "SkillsButtonTooltip") => "Skills",
+            (AppLanguage.English, "WorkspaceAgentsTooltip") => "Open AGENTS.md",
+            (AppLanguage.English, "WorkspaceClaudeTooltip") => "Open CLAUDE.md",
             (AppLanguage.English, "SkillsPopupTitle") => "Skill Docs",
             (AppLanguage.English, "SkillsEmpty") => "No skill documents found.",
+            (AppLanguage.English, "WorkspaceRootUnavailable") => "No workspace root is currently available.",
+            (AppLanguage.English, "WorkspaceAgentsMissing") => "AGENTS.md was not found in the current workspace root.",
+            (AppLanguage.English, "WorkspaceClaudeMissing") => "CLAUDE.md was not found in the current workspace root.",
             (AppLanguage.English, "LoadingDocument") => "Loading document...",
             (AppLanguage.English, "LoadingLargeFile") => "Loading large file...",
             (AppLanguage.English, "Rendering") => "Rendering...",
@@ -411,6 +421,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         OpenHistoryBackButton.ToolTip = Text("TooltipBack");
         OpenHistoryForwardButton.ToolTip = Text("TooltipForward");
         SkillsButton.ToolTip = Text("SkillsButtonTooltip");
+        WorkspaceAgentsButton.ToolTip = Text("WorkspaceAgentsTooltip");
+        WorkspaceClaudeButton.ToolTip = Text("WorkspaceClaudeTooltip");
         SkillsPopupTitleText.Text = Text("SkillsPopupTitle");
         SkillsEmptyText.Text = Text("SkillsEmpty");
         QuickOpenButton.ToolTip = Text("QuickOpenButtonTooltip");
@@ -1121,6 +1133,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SkillsPopup.IsOpen = !SkillsPopup.IsOpen;
     }
 
+    private async void OnWorkspaceAgentsButtonClicked(object sender, RoutedEventArgs e)
+    {
+        await OpenWorkspaceControlDocumentAsync("AGENTS.md", Text("WorkspaceAgentsMissing"));
+    }
+
+    private async void OnWorkspaceClaudeButtonClicked(object sender, RoutedEventArgs e)
+    {
+        await OpenWorkspaceControlDocumentAsync("CLAUDE.md", Text("WorkspaceClaudeMissing"));
+    }
+
     private async void OnOpenHistoryBackButtonClicked(object sender, RoutedEventArgs e)
     {
         await NavigateOpenFileHistoryAsync(-1);
@@ -1340,6 +1362,57 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SkillsPopup.IsOpen = false;
         await LoadDocumentAsync(filePath, createIfMissing: false);
+    }
+
+    private async Task OpenWorkspaceControlDocumentAsync(string fileName, string missingMessage)
+    {
+        RecentFilesPopup.IsOpen = false;
+        SkillsPopup.IsOpen = false;
+        if (QuickOpenPopup.IsOpen)
+        {
+            CloseQuickOpenPopup();
+        }
+
+        var workspaceRoot = ResolveCurrentWorkspaceRoot();
+        if (string.IsNullOrWhiteSpace(workspaceRoot))
+        {
+            ShowSoftError(Text("WorkspaceRootUnavailable"));
+            return;
+        }
+
+        var path = Path.Combine(workspaceRoot, fileName);
+        if (!File.Exists(path))
+        {
+            ShowSoftError(missingMessage);
+            return;
+        }
+
+        try
+        {
+            await LoadDocumentAsync(path, createIfMissing: false);
+        }
+        catch (Exception ex)
+        {
+            ShowSoftError($"{Text("OpenFailedPrefix")}: {ex.Message}");
+            ShowLoading(false);
+            SetState(EditorState.Idle);
+        }
+    }
+
+    private string ResolveCurrentWorkspaceRoot()
+    {
+        if (!string.IsNullOrWhiteSpace(_workspaceRoot) && Directory.Exists(_workspaceRoot))
+        {
+            return Path.GetFullPath(_workspaceRoot);
+        }
+
+        var currentFileDirectory = Path.GetDirectoryName(_currentFilePath);
+        if (!string.IsNullOrWhiteSpace(currentFileDirectory) && Directory.Exists(currentFileDirectory))
+        {
+            return Path.GetFullPath(currentFileDirectory);
+        }
+
+        return string.Empty;
     }
 
     private List<SkillDocumentEntry> LoadSkillDocumentEntries()
