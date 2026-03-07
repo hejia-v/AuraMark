@@ -17,15 +17,21 @@ export type HostCommand = {
     | 'ToggleSourceMode'
     | 'FreezeInput'
     | 'ResumeInput'
+    | 'Undo'
+    | 'Redo'
     | 'ReplaceAll'
     | 'E2eSetMarkdown'
     | 'ScrollToHeading'
     | 'SetImmersive'
     | 'InsertCodeBlock'
-    | 'SetTitle';
+    | 'SetTitle'
+    | 'ActiveHeadingChanged'
+    | 'HistoryStateChanged';
   content?: string;
   index?: number;
   value?: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
 };
 
 declare global {

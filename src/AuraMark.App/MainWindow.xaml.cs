@@ -150,6 +150,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isQuickOpenLoading;
     private int _openFileHistoryIndex = -1;
     private int? _pendingOpenFileHistoryIndex;
+    private bool _canUndo;
+    private bool _canRedo;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -165,6 +167,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Title = "AuraMark";
         DataContext = this;
         UpdateOpenFileHistoryButtons();
+        UpdateUndoRedoControls();
 
         _externalReloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _externalReloadTimer.Tick += OnExternalReloadTimerTick;
@@ -310,6 +313,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _webReady = false;
         _editorInitialized = false;
         _isDocumentRendering = false;
+        ResetHistoryAvailability();
 
         MainWebView.Dispose();
         WebViewHost.Children.Clear();
@@ -441,6 +445,62 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         OpenHistoryBackButton.IsEnabled = _openFileHistoryIndex > 0;
         OpenHistoryForwardButton.IsEnabled =
             _openFileHistoryIndex >= 0 && _openFileHistoryIndex < _openFileHistory.Count - 1;
+    }
+
+    private void UpdateUndoRedoControls()
+    {
+        if (UndoMenuItem is not null)
+        {
+            UndoMenuItem.IsEnabled = _canUndo;
+        }
+
+        if (RedoMenuItem is not null)
+        {
+            RedoMenuItem.IsEnabled = _canRedo;
+        }
+    }
+
+    private void SetHistoryAvailability(bool canUndo, bool canRedo)
+    {
+        _canUndo = canUndo;
+        _canRedo = canRedo;
+        UpdateUndoRedoControls();
+    }
+
+    private void ResetHistoryAvailability()
+    {
+        SetHistoryAvailability(false, false);
+    }
+
+    private void RequestUndo()
+    {
+        if (!_canUndo || _inputFrozen)
+        {
+            return;
+        }
+
+        SendCommand(new HostCommand { Name = IpcCommands.Undo });
+    }
+
+    private void RequestRedo()
+    {
+        if (!_canRedo || _inputFrozen)
+        {
+            return;
+        }
+
+        SendCommand(new HostCommand { Name = IpcCommands.Redo });
+    }
+
+    private static bool IsLocalTextInputFocused()
+    {
+        var focusedElement = Keyboard.FocusedElement;
+        if (focusedElement is System.Windows.Controls.Primitives.TextBoxBase)
+        {
+            return true;
+        }
+
+        return focusedElement is System.Windows.Controls.ComboBox comboBox && comboBox.IsEditable;
     }
 
     private void CommitOpenFileHistory(string path)
@@ -829,6 +889,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await SavePendingChangesAsync(force: true);
     }
 
+    private void OnUndoClicked(object sender, RoutedEventArgs e)
+    {
+        RequestUndo();
+    }
+
+    private void OnRedoClicked(object sender, RoutedEventArgs e)
+    {
+        RequestRedo();
+    }
+
     private async void OnExportHtmlClicked(object sender, RoutedEventArgs e)
     {
         await ExportDocumentAsync();
@@ -935,6 +1005,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             CloseQuickOpenPopup();
             e.Handled = true;
             return;
+        }
+
+        if (!IsLocalTextInputFocused())
+        {
+            if (modifiers == ModifierKeys.Control && e.Key == Key.Z)
+            {
+                RequestUndo();
+                e.Handled = true;
+                return;
+            }
+
+            if ((modifiers == ModifierKeys.Control && e.Key == Key.Y) ||
+                (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.Z))
+            {
+                RequestRedo();
+                e.Handled = true;
+                return;
+            }
         }
 
         if (modifiers == ModifierKeys.Control && e.Key == Key.P)
@@ -1729,6 +1817,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void QueueDocumentToWeb(string markdown)
     {
         _queuedDocumentForWeb = markdown;
+        ResetHistoryAvailability();
         TryPushQueuedDocumentToWeb();
     }
 
@@ -1901,6 +1990,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         else if (command.Name.Equals(IpcCommands.ActiveHeadingChanged, StringComparison.Ordinal))
         {
             SetActiveHeadingIndex(command.Index ?? -1);
+        }
+        else if (command.Name.Equals(IpcCommands.HistoryStateChanged, StringComparison.Ordinal))
+        {
+            SetHistoryAvailability(command.CanUndo == true, command.CanRedo == true);
         }
     }
 
@@ -3034,6 +3127,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _webReady = false;
         _editorInitialized = false;
+        ResetHistoryAvailability();
 
         if (uri.Scheme.Equals("about", StringComparison.OrdinalIgnoreCase))
         {

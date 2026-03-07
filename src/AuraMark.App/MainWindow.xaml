@@ -1037,6 +1037,20 @@
                                   Style="{StaticResource MenuItemStyle}"
                                   Click="OnExportHtmlClicked" />
                     </MenuItem>
+                    <MenuItem Header="Edit" Style="{StaticResource MenuItemStyle}">
+                        <MenuItem x:Name="UndoMenuItem"
+                                  Header="Undo"
+                                  Style="{StaticResource MenuItemStyle}"
+                                  InputGestureText="Ctrl+Z"
+                                  IsEnabled="False"
+                                  Click="OnUndoClicked" />
+                        <MenuItem x:Name="RedoMenuItem"
+                                  Header="Redo"
+                                  Style="{StaticResource MenuItemStyle}"
+                                  InputGestureText="Ctrl+Y"
+                                  IsEnabled="False"
+                                  Click="OnRedoClicked" />
+                    </MenuItem>
                     <MenuItem Header="View" Style="{StaticResource MenuItemStyle}">
                         <MenuItem Header="Toggle Workspace"
                                   Style="{StaticResource MenuItemStyle}"

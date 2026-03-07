@@ -26,6 +26,8 @@ public static class IpcCommands
     public const string ToggleSourceMode = "ToggleSourceMode";
     public const string FreezeInput = "FreezeInput";
     public const string ResumeInput = "ResumeInput";
+    public const string Undo = "Undo";
+    public const string Redo = "Redo";
     public const string ReplaceAll = "ReplaceAll";
     public const string E2eSetMarkdown = "E2eSetMarkdown";
     public const string ScrollToHeading = "ScrollToHeading";
@@ -33,6 +35,7 @@ public static class IpcCommands
     public const string InsertCodeBlock = "InsertCodeBlock";
     public const string SetTitle = "SetTitle";
     public const string ActiveHeadingChanged = "ActiveHeadingChanged";
+    public const string HistoryStateChanged = "HistoryStateChanged";
 }
 
 public static class IpcLimits
@@ -59,6 +62,10 @@ public sealed class HostCommand
     public int? Index { get; set; }
 
     public bool? Value { get; set; }
+
+    public bool? CanUndo { get; set; }
+
+    public bool? CanRedo { get; set; }
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 
