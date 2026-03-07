@@ -50,6 +50,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
     private const int MaxRecentEntries = 25;
+    private const int MaxOpenFileHistoryEntries = 100;
     private static readonly string RecentFilesJsonPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "recent.json");
@@ -94,6 +95,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly ObservableCollection<OutlineItem> _outlineItems = [];
     private readonly ObservableCollection<QuickOpenEntry> _quickOpenEntries = [];
     private readonly List<QuickOpenEntry> _quickOpenSourceEntries = [];
+    private readonly List<string> _openFileHistory = [];
 
     private CoreWebView2? _webViewCore;
     private FileSystemWatcher? _fileWatcher;
@@ -146,6 +148,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int _activeHeadingIndex = -1;
     private int _quickOpenLoadVersion;
     private bool _isQuickOpenLoading;
+    private int _openFileHistoryIndex = -1;
+    private int? _pendingOpenFileHistoryIndex;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -160,6 +164,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         Title = "AuraMark";
         DataContext = this;
+        UpdateOpenFileHistoryButtons();
 
         _externalReloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _externalReloadTimer.Tick += OnExternalReloadTimerTick;
@@ -426,6 +431,159 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         catch { return string.Empty; }
     }
 
+    private void UpdateOpenFileHistoryButtons()
+    {
+        if (OpenHistoryBackButton is null || OpenHistoryForwardButton is null)
+        {
+            return;
+        }
+
+        OpenHistoryBackButton.IsEnabled = _openFileHistoryIndex > 0;
+        OpenHistoryForwardButton.IsEnabled =
+            _openFileHistoryIndex >= 0 && _openFileHistoryIndex < _openFileHistory.Count - 1;
+    }
+
+    private void CommitOpenFileHistory(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            UpdateOpenFileHistoryButtons();
+            return;
+        }
+
+        path = Path.GetFullPath(path);
+        if (_pendingOpenFileHistoryIndex is int pendingIndex)
+        {
+            if (pendingIndex >= 0 && pendingIndex < _openFileHistory.Count)
+            {
+                _openFileHistory[pendingIndex] = path;
+                _openFileHistoryIndex = pendingIndex;
+            }
+            else
+            {
+                _openFileHistory.Clear();
+                _openFileHistory.Add(path);
+                _openFileHistoryIndex = 0;
+            }
+
+            _pendingOpenFileHistoryIndex = null;
+            UpdateOpenFileHistoryButtons();
+            return;
+        }
+
+        if (_openFileHistoryIndex >= 0 &&
+            _openFileHistoryIndex < _openFileHistory.Count &&
+            _openFileHistory[_openFileHistoryIndex].Equals(path, StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateOpenFileHistoryButtons();
+            return;
+        }
+
+        if (_openFileHistoryIndex >= 0 && _openFileHistoryIndex < _openFileHistory.Count - 1)
+        {
+            _openFileHistory.RemoveRange(
+                _openFileHistoryIndex + 1,
+                _openFileHistory.Count - _openFileHistoryIndex - 1);
+        }
+
+        _openFileHistory.Add(path);
+        if (_openFileHistory.Count > MaxOpenFileHistoryEntries)
+        {
+            var overflow = _openFileHistory.Count - MaxOpenFileHistoryEntries;
+            _openFileHistory.RemoveRange(0, overflow);
+        }
+
+        _openFileHistoryIndex = _openFileHistory.Count - 1;
+        UpdateOpenFileHistoryButtons();
+    }
+
+    private void ReplaceOpenFileHistoryPath(string oldPath, string newPath)
+    {
+        if (string.IsNullOrWhiteSpace(oldPath) || string.IsNullOrWhiteSpace(newPath))
+        {
+            return;
+        }
+
+        oldPath = Path.GetFullPath(oldPath);
+        newPath = Path.GetFullPath(newPath);
+        for (var i = 0; i < _openFileHistory.Count; i++)
+        {
+            if (_openFileHistory[i].Equals(oldPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _openFileHistory[i] = newPath;
+            }
+        }
+
+        UpdateOpenFileHistoryButtons();
+    }
+
+    private void UpdateCurrentFilePath(string oldPath, string newPath)
+    {
+        if (!oldPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _currentFilePath = Path.GetFullPath(newPath);
+        FileNameText.Text = Path.GetFileName(_currentFilePath);
+        ReplaceOpenFileHistoryPath(oldPath, _currentFilePath);
+        SaveLastFile(_currentFilePath);
+
+        if (_webReady)
+        {
+            SendCommand(new HostCommand
+            {
+                Name = IpcCommands.SetTitle,
+                Content = Path.GetFileName(_currentFilePath),
+            });
+        }
+    }
+
+    private async Task NavigateOpenFileHistoryAsync(int offset)
+    {
+        var targetIndex = _openFileHistoryIndex + offset;
+        if (targetIndex < 0 || targetIndex >= _openFileHistory.Count)
+        {
+            UpdateOpenFileHistoryButtons();
+            return;
+        }
+
+        var targetPath = _openFileHistory[targetIndex];
+        if (!File.Exists(targetPath))
+        {
+            _openFileHistory.RemoveAt(targetIndex);
+            if (targetIndex <= _openFileHistoryIndex)
+            {
+                _openFileHistoryIndex--;
+            }
+
+            _pendingOpenFileHistoryIndex = null;
+            UpdateOpenFileHistoryButtons();
+            ShowSoftError("History file does not exist.");
+            return;
+        }
+
+        _pendingOpenFileHistoryIndex = targetIndex;
+        try
+        {
+            await LoadDocumentAsync(targetPath, createIfMissing: false);
+        }
+        catch (Exception ex)
+        {
+            ShowSoftError($"Open failed: {ex.Message}");
+            ShowLoading(false);
+            SetState(EditorState.Idle);
+        }
+        finally
+        {
+            if (!_currentFilePath.Equals(targetPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _pendingOpenFileHistoryIndex = null;
+                UpdateOpenFileHistoryButtons();
+            }
+        }
+    }
+
     private void LoadSettings()
     {
         try
@@ -556,6 +714,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnRecentFilesButtonClicked(object sender, RoutedEventArgs e)
     {
         RecentFilesPopup.IsOpen = !RecentFilesPopup.IsOpen;
+    }
+
+    private async void OnOpenHistoryBackButtonClicked(object sender, RoutedEventArgs e)
+    {
+        await NavigateOpenFileHistoryAsync(-1);
+    }
+
+    private async void OnOpenHistoryForwardButtonClicked(object sender, RoutedEventArgs e)
+    {
+        await NavigateOpenFileHistoryAsync(1);
     }
 
     private void OnRecentFilesPopupOpened(object? sender, EventArgs e)
@@ -1510,6 +1678,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _currentFilePath = path;
+        CommitOpenFileHistory(path);
         var fileDir = Path.GetDirectoryName(path) ?? string.Empty;
         if (string.IsNullOrWhiteSpace(_workspaceRoot))
         {
@@ -3117,8 +3286,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             else
             {
                 File.Move(node.FullPath, dest);
-                if (node.FullPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
-                    _currentFilePath = dest;
+                UpdateCurrentFilePath(node.FullPath, dest);
             }
             RefreshFileTree();
         }
@@ -3203,8 +3371,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             else
             {
                 File.Move(src.FullPath, dest);
-                if (src.FullPath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase))
-                    _currentFilePath = dest;
+                UpdateCurrentFilePath(src.FullPath, dest);
             }
             RefreshFileTree();
         }
