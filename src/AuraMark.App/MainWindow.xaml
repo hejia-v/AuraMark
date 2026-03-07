@@ -1424,26 +1424,6 @@
                             Orientation="Horizontal"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Right">
-                    <Button x:Name="SaveButton"
-                            Style="{StaticResource TopBarActionButtonStyle}"
-                            Click="OnSaveNowClicked"
-                            ToolTip="Save current file (Ctrl+S)"
-                            AutomationProperties.AutomationId="SaveFileButton"
-                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Width="12"
-                                  Height="12"
-                                  Margin="0,0,6,0"
-                                  VerticalAlignment="Center"
-                                  Stretch="Uniform"
-                                  Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                  Data="M3.5 2A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5.56a2 2 0 0 0-.59-1.41l-.56-.56A2 2 0 0 0 11.44 3H10V2.75A.75.75 0 0 0 9.25 2zm5 1.5V6h-3V3.5zM7 3.5V6.25c0 .41.34.75.75.75h4.75v5.5H3.5v-9zm-1 6.75c-.41 0-.75.34-.75.75s.34.75.75.75h4c.41 0 .75-.34.75-.75s-.34-.75-.75-.75z" />
-                            <TextBlock VerticalAlignment="Center"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Text="Save" />
-                        </StackPanel>
-                    </Button>
                     <Button x:Name="MinimizeButton"
                             Style="{StaticResource WindowMinimizeButton}"
                             Margin="0,0,2,0"
