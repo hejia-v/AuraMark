@@ -1,6 +1,7 @@
 ﻿
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -40,6 +41,12 @@ namespace AuraMark.App;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    private enum AppLanguage
+    {
+        Chinese,
+        English,
+    }
+
     private const string VirtualHostName = "app.auramark.local";
     private const long LargeFileThresholdBytes = 5 * 1024 * 1024;
     private const int ImmersiveTypingThresholdMilliseconds = 3000;
@@ -152,6 +159,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int? _pendingOpenFileHistoryIndex;
     private bool _canUndo;
     private bool _canRedo;
+    private AppLanguage _currentLanguage = GetDefaultLanguage();
+    private AppLanguage _pendingLanguage = GetDefaultLanguage();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -166,6 +175,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         Title = "AuraMark";
         DataContext = this;
+        ApplyLanguage();
         UpdateOpenFileHistoryButtons();
         UpdateUndoRedoControls();
 
@@ -181,6 +191,268 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             UpdateQuickOpenPopupOffset();
         };
         StateChanged += (_, _) => UpdateCollapsedHandlesVisibility();
+    }
+
+    private static AppLanguage GetDefaultLanguage()
+    {
+        return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("zh", StringComparison.OrdinalIgnoreCase)
+            ? AppLanguage.Chinese
+            : AppLanguage.English;
+    }
+
+    private static AppLanguage ParseLanguage(string? value)
+    {
+        return value?.ToLowerInvariant() switch
+        {
+            "zh" or "zh-cn" or "zh-hans" => AppLanguage.Chinese,
+            "en" or "en-us" or "en-gb" => AppLanguage.English,
+            _ => GetDefaultLanguage(),
+        };
+    }
+
+    private static string ToLanguageCode(AppLanguage language)
+    {
+        return language == AppLanguage.Chinese ? "zh-CN" : "en-US";
+    }
+
+    private string Text(string key)
+    {
+        return (_currentLanguage, key) switch
+        {
+            (AppLanguage.Chinese, "MenuFile") => "文件",
+            (AppLanguage.Chinese, "MenuNew") => "新建",
+            (AppLanguage.Chinese, "MenuOpenFile") => "打开文件...",
+            (AppLanguage.Chinese, "MenuOpenFolder") => "打开文件夹...",
+            (AppLanguage.Chinese, "MenuRecent") => "最近打开",
+            (AppLanguage.Chinese, "MenuSave") => "保存",
+            (AppLanguage.Chinese, "MenuExport") => "导出...",
+            (AppLanguage.Chinese, "MenuSettings") => "设置",
+            (AppLanguage.Chinese, "MenuEdit") => "编辑",
+            (AppLanguage.Chinese, "MenuUndo") => "撤销",
+            (AppLanguage.Chinese, "MenuRedo") => "重做",
+            (AppLanguage.Chinese, "MenuView") => "视图",
+            (AppLanguage.Chinese, "MenuToggleWorkspace") => "切换工作区",
+            (AppLanguage.Chinese, "MenuToggleOutline") => "切换大纲",
+            (AppLanguage.Chinese, "RecentEmpty") => "暂无最近项目",
+            (AppLanguage.Chinese, "SettingsTitle") => "设置",
+            (AppLanguage.Chinese, "SettingsSubtitle") => "配置应用语言。",
+            (AppLanguage.Chinese, "SettingsLanguageTab") => "语言",
+            (AppLanguage.Chinese, "SettingsLanguageLabel") => "显示语言",
+            (AppLanguage.Chinese, "SettingsLanguageDescription") => "选择应用壳层和编辑器外框所使用的语言。",
+            (AppLanguage.Chinese, "SettingsLanguageChinese") => "简体中文",
+            (AppLanguage.Chinese, "SettingsLanguageEnglish") => "English",
+            (AppLanguage.Chinese, "DialogCancel") => "取消",
+            (AppLanguage.Chinese, "DialogApply") => "应用",
+            (AppLanguage.Chinese, "DialogDiscard") => "不保存",
+            (AppLanguage.Chinese, "DialogSave") => "保存",
+            (AppLanguage.Chinese, "Retry") => "重试",
+            (AppLanguage.Chinese, "SyncConflictPrompt") => "检测到外部文件已变更。保留本地内容还是载入外部版本？",
+            (AppLanguage.Chinese, "KeepLocal") => "保留本地",
+            (AppLanguage.Chinese, "UseExternal") => "使用外部版本",
+            (AppLanguage.Chinese, "Outline") => "大纲",
+            (AppLanguage.Chinese, "Workspace") => "工作区",
+            (AppLanguage.Chinese, "TooltipBack") => "后退",
+            (AppLanguage.Chinese, "TooltipForward") => "前进",
+            (AppLanguage.Chinese, "LoadingDocument") => "正在加载文档...",
+            (AppLanguage.Chinese, "LoadingLargeFile") => "正在加载大文件...",
+            (AppLanguage.Chinese, "Rendering") => "正在渲染...",
+            (AppLanguage.Chinese, "FinishingSave") => "正在完成保存...",
+            (AppLanguage.Chinese, "SavingCurrentDocument") => "正在保存当前文档...",
+            (AppLanguage.Chinese, "OpenWorkspaceDescription") => "选择要作为工作区打开的文件夹",
+            (AppLanguage.Chinese, "OpenMarkdownTitle") => "打开 Markdown",
+            (AppLanguage.Chinese, "OpenMarkdownFilter") => "Markdown 文件|*.md;*.markdown;*.txt|所有文件|*.*",
+            (AppLanguage.Chinese, "ExportDocumentTitle") => "导出文档",
+            (AppLanguage.Chinese, "ExportDocumentFilter") => "HTML 文件|*.html|PDF 文件|*.pdf",
+            (AppLanguage.Chinese, "UnsavedChangesTitle") => "未保存的更改",
+            (AppLanguage.Chinese, "CloseAppPrompt") => "当前文档有未保存的更改。\n\n您想在关闭应用前保存这些更改吗？",
+            (AppLanguage.Chinese, "SwitchFilePrompt") => "当前文档有未保存的更改。\n\n您想在切换文件前保存这些更改吗？",
+            (AppLanguage.Chinese, "CancelCloseHint") => "已取消关闭",
+            (AppLanguage.Chinese, "CancelSwitchHint") => "已取消切换",
+            (AppLanguage.Chinese, "SaveFailureHint") => "保存失败，请先解决错误。",
+            (AppLanguage.Chinese, "HistoryFileMissing") => "历史文件不存在。",
+            (AppLanguage.Chinese, "FolderMissing") => "文件夹已不存在。",
+            (AppLanguage.Chinese, "OpenFailedPrefix") => "打开失败",
+            (AppLanguage.Chinese, "FileMissing") => "文件不存在。",
+            (AppLanguage.Chinese, "RenameFailedPrefix") => "重命名失败",
+            (AppLanguage.Chinese, "MoveFailedPrefix") => "移动失败",
+            (AppLanguage.Chinese, "PdfExportUnavailable") => "PDF 导出不可用：编辑器尚未就绪。",
+            (AppLanguage.Chinese, "PdfExportFailed") => "PDF 导出失败，请重试。",
+            (AppLanguage.Chinese, "RecoveredSnapshotHint") => "已恢复本地快照，请检查后保存。",
+            (AppLanguage.Chinese, "QuickOpenIndexing") => "正在索引工作区...",
+            (AppLanguage.Chinese, "QuickOpenButtonTooltip") => "搜索文件 (Ctrl+P)",
+            (AppLanguage.Chinese, "QuickOpenButtonLabel") => "搜索文件",
+            (AppLanguage.Chinese, "QuickOpenPlaceholder") => "输入文件名或路径",
+            (AppLanguage.Chinese, "QuickOpenEmptyDefault") => "暂无可用文件。",
+            (AppLanguage.Chinese, "QuickOpenEmptyQueryFormat") => "没有匹配“{0}”的结果。",
+            (AppLanguage.Chinese, "MarkdownSourceLabel") => "Markdown 源码",
+            (AppLanguage.Chinese, "UnsavedChangesTooltip") => "存在未保存的更改",
+            (AppLanguage.English, "MenuFile") => "File",
+            (AppLanguage.English, "MenuNew") => "New",
+            (AppLanguage.English, "MenuOpenFile") => "Open File...",
+            (AppLanguage.English, "MenuOpenFolder") => "Open Folder...",
+            (AppLanguage.English, "MenuRecent") => "Recent",
+            (AppLanguage.English, "MenuSave") => "Save",
+            (AppLanguage.English, "MenuExport") => "Export...",
+            (AppLanguage.English, "MenuSettings") => "Settings",
+            (AppLanguage.English, "MenuEdit") => "Edit",
+            (AppLanguage.English, "MenuUndo") => "Undo",
+            (AppLanguage.English, "MenuRedo") => "Redo",
+            (AppLanguage.English, "MenuView") => "View",
+            (AppLanguage.English, "MenuToggleWorkspace") => "Toggle Workspace",
+            (AppLanguage.English, "MenuToggleOutline") => "Toggle Outline",
+            (AppLanguage.English, "RecentEmpty") => "No recent items",
+            (AppLanguage.English, "SettingsTitle") => "Settings",
+            (AppLanguage.English, "SettingsSubtitle") => "Configure the app language.",
+            (AppLanguage.English, "SettingsLanguageTab") => "Language",
+            (AppLanguage.English, "SettingsLanguageLabel") => "Display Language",
+            (AppLanguage.English, "SettingsLanguageDescription") => "Choose the language used by the app chrome and editor shell.",
+            (AppLanguage.English, "SettingsLanguageChinese") => "Simplified Chinese",
+            (AppLanguage.English, "SettingsLanguageEnglish") => "English",
+            (AppLanguage.English, "DialogCancel") => "Cancel",
+            (AppLanguage.English, "DialogApply") => "Apply",
+            (AppLanguage.English, "DialogDiscard") => "Discard",
+            (AppLanguage.English, "DialogSave") => "Save",
+            (AppLanguage.English, "Retry") => "Retry",
+            (AppLanguage.English, "SyncConflictPrompt") => "External file changed. Keep local or reload external?",
+            (AppLanguage.English, "KeepLocal") => "Keep Local",
+            (AppLanguage.English, "UseExternal") => "Use External",
+            (AppLanguage.English, "Outline") => "OUTLINE",
+            (AppLanguage.English, "Workspace") => "WORKSPACE",
+            (AppLanguage.English, "TooltipBack") => "Back",
+            (AppLanguage.English, "TooltipForward") => "Forward",
+            (AppLanguage.English, "LoadingDocument") => "Loading document...",
+            (AppLanguage.English, "LoadingLargeFile") => "Loading large file...",
+            (AppLanguage.English, "Rendering") => "Rendering...",
+            (AppLanguage.English, "FinishingSave") => "Finishing save...",
+            (AppLanguage.English, "SavingCurrentDocument") => "Saving current document...",
+            (AppLanguage.English, "OpenWorkspaceDescription") => "Select a folder to open as workspace",
+            (AppLanguage.English, "OpenMarkdownTitle") => "Open Markdown",
+            (AppLanguage.English, "OpenMarkdownFilter") => "Markdown Files|*.md;*.markdown;*.txt|All Files|*.*",
+            (AppLanguage.English, "ExportDocumentTitle") => "Export Document",
+            (AppLanguage.English, "ExportDocumentFilter") => "HTML|*.html|PDF|*.pdf",
+            (AppLanguage.English, "UnsavedChangesTitle") => "Unsaved Changes",
+            (AppLanguage.English, "CloseAppPrompt") => "The current document has unsaved changes.\n\nDo you want to save them before closing the app?",
+            (AppLanguage.English, "SwitchFilePrompt") => "The current document has unsaved changes.\n\nDo you want to save them before switching files?",
+            (AppLanguage.English, "CancelCloseHint") => "Close canceled",
+            (AppLanguage.English, "CancelSwitchHint") => "Switch canceled",
+            (AppLanguage.English, "SaveFailureHint") => "Save failed. Resolve the error before continuing.",
+            (AppLanguage.English, "HistoryFileMissing") => "History file does not exist.",
+            (AppLanguage.English, "FolderMissing") => "Folder no longer exists.",
+            (AppLanguage.English, "OpenFailedPrefix") => "Open failed",
+            (AppLanguage.English, "FileMissing") => "File does not exist.",
+            (AppLanguage.English, "RenameFailedPrefix") => "Rename failed",
+            (AppLanguage.English, "MoveFailedPrefix") => "Move failed",
+            (AppLanguage.English, "PdfExportUnavailable") => "PDF export unavailable: editor not ready.",
+            (AppLanguage.English, "PdfExportFailed") => "PDF export failed. Please retry.",
+            (AppLanguage.English, "RecoveredSnapshotHint") => "Recovered local snapshot. Review and save.",
+            (AppLanguage.English, "QuickOpenIndexing") => "Indexing workspace...",
+            (AppLanguage.English, "QuickOpenButtonTooltip") => "Quick Open (Ctrl+P)",
+            (AppLanguage.English, "QuickOpenButtonLabel") => "Search files",
+            (AppLanguage.English, "QuickOpenPlaceholder") => "Type a file name or path",
+            (AppLanguage.English, "QuickOpenEmptyDefault") => "No files available.",
+            (AppLanguage.English, "QuickOpenEmptyQueryFormat") => "No matches for \"{0}\".",
+            (AppLanguage.English, "MarkdownSourceLabel") => "Markdown source",
+            (AppLanguage.English, "UnsavedChangesTooltip") => "Unsaved changes",
+            _ => key,
+        };
+    }
+
+    private void ApplyLanguage()
+    {
+        if (FileMenuRoot is null)
+        {
+            return;
+        }
+
+        FileMenuRoot.Header = Text("MenuFile");
+        FileNewMenuItem.Header = Text("MenuNew");
+        FileOpenFileMenuItem.Header = Text("MenuOpenFile");
+        FileOpenFolderMenuItem.Header = Text("MenuOpenFolder");
+        RecentMenuItem.Header = Text("MenuRecent");
+        FileSaveMenuItem.Header = Text("MenuSave");
+        FileExportMenuItem.Header = Text("MenuExport");
+        FileSettingsMenuItem.Header = Text("MenuSettings");
+        EditMenuRoot.Header = Text("MenuEdit");
+        UndoMenuItem.Header = Text("MenuUndo");
+        RedoMenuItem.Header = Text("MenuRedo");
+        ViewMenuRoot.Header = Text("MenuView");
+        ViewToggleWorkspaceMenuItem.Header = Text("MenuToggleWorkspace");
+        ViewToggleOutlineMenuItem.Header = Text("MenuToggleOutline");
+        OutlineHeaderText.Text = Text("Outline");
+        RetrySaveButton.Content = Text("Retry");
+        KeepLocalButton.Content = Text("KeepLocal");
+        AcceptExternalButton.Content = Text("UseExternal");
+        ConfirmDialogCancelButton.Content = Text("DialogCancel");
+        ConfirmDialogDiscardButton.Content = Text("DialogDiscard");
+        ConfirmDialogSaveButton.Content = Text("DialogSave");
+        SettingsDialogTitle.Text = Text("SettingsTitle");
+        SettingsDialogSubtitle.Text = Text("SettingsSubtitle");
+        SettingsLanguageTab.Header = Text("SettingsLanguageTab");
+        SettingsLanguageLabel.Text = Text("SettingsLanguageLabel");
+        SettingsLanguageDescription.Text = Text("SettingsLanguageDescription");
+        SettingsLanguageChineseText.Text = Text("SettingsLanguageChinese");
+        SettingsLanguageEnglishText.Text = Text("SettingsLanguageEnglish");
+        SettingsDialogCancelButton.Content = Text("DialogCancel");
+        SettingsDialogApplyButton.Content = Text("DialogApply");
+        OpenHistoryBackButton.ToolTip = Text("TooltipBack");
+        OpenHistoryForwardButton.ToolTip = Text("TooltipForward");
+        QuickOpenButton.ToolTip = Text("QuickOpenButtonTooltip");
+        QuickOpenButtonText.Text = Text("QuickOpenButtonLabel");
+        QuickOpenPlaceholderText.Text = Text("QuickOpenPlaceholder");
+        SyncConflictText.Text = Text("SyncConflictPrompt");
+
+        if (!_isDocumentRendering && LoadingOverlay.Visibility != Visibility.Visible)
+        {
+            LoadingText.Text = Text("LoadingDocument");
+        }
+
+        QuickOpenLoadingText.Text = Text("QuickOpenIndexing");
+
+        UpdateQuickOpenHelperText();
+
+        if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+        {
+            WorkspaceFolderNameText.Text = Text("Workspace");
+        }
+
+        RefreshRecentMenu();
+        ApplyQuickOpenFilter(QuickOpenSearchTextBox.Text);
+        UpdateSettingsLanguageSelection();
+        PushLanguageToWeb();
+    }
+
+    private void UpdateSettingsLanguageSelection()
+    {
+        if (SettingsLanguageChineseOption is null || SettingsLanguageEnglishOption is null)
+        {
+            return;
+        }
+
+        SettingsLanguageChineseOption.IsChecked = _pendingLanguage == AppLanguage.Chinese;
+        SettingsLanguageEnglishOption.IsChecked = _pendingLanguage == AppLanguage.English;
+    }
+
+    private void PushLanguageToWeb()
+    {
+        SendCommand(new HostCommand
+        {
+            Name = IpcCommands.SetLanguage,
+            Content = ToLanguageCode(_currentLanguage),
+        });
+    }
+
+    private void OpenSettingsDialog()
+    {
+        _pendingLanguage = _currentLanguage;
+        UpdateSettingsLanguageSelection();
+        SettingsDialogPopup.IsOpen = true;
+    }
+
+    private void CloseSettingsDialog()
+    {
+        _pendingLanguage = _currentLanguage;
+        UpdateSettingsLanguageSelection();
+        SettingsDialogPopup.IsOpen = false;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -347,11 +619,45 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await OpenWithDialogAsync();
     }
 
+    private void OnOpenSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        OpenSettingsDialog();
+    }
+
+    private void OnCloseSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        CloseSettingsDialog();
+    }
+
+    private void OnApplySettingsClicked(object sender, RoutedEventArgs e)
+    {
+        if (_currentLanguage != _pendingLanguage)
+        {
+            _currentLanguage = _pendingLanguage;
+            SaveSettings();
+            ApplyLanguage();
+        }
+
+        CloseSettingsDialog();
+    }
+
+    private void OnSettingsLanguageOptionChecked(object sender, RoutedEventArgs e)
+    {
+        if (SettingsLanguageChineseOption.IsChecked == true)
+        {
+            _pendingLanguage = AppLanguage.Chinese;
+        }
+        else if (SettingsLanguageEnglishOption.IsChecked == true)
+        {
+            _pendingLanguage = AppLanguage.English;
+        }
+    }
+
     private void OnOpenFolderClicked(object sender, RoutedEventArgs e)
     {
         var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description = "Select a folder to open as workspace",
+            Description = Text("OpenWorkspaceDescription"),
             UseDescriptionForTitle = true,
             AutoUpgradeEnabled = true,
         };
@@ -619,7 +925,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             _pendingOpenFileHistoryIndex = null;
             UpdateOpenFileHistoryButtons();
-            ShowSoftError("History file does not exist.");
+            ShowSoftError(Text("HistoryFileMissing"));
             return;
         }
 
@@ -630,7 +936,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            ShowSoftError($"Open failed: {ex.Message}");
+            ShowSoftError($"{Text("OpenFailedPrefix")}: {ex.Message}");
             ShowLoading(false);
             SetState(EditorState.Idle);
         }
@@ -655,6 +961,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _sidebarExpandedWidth = Math.Clamp(settings.SidebarWidth, 160, 600);
             if (settings?.OutlineWidth is > 0)
                 _outlineExpandedWidth = Math.Clamp(settings.OutlineWidth, 160, 600);
+            if (!string.IsNullOrWhiteSpace(settings?.Language))
+            {
+                _currentLanguage = ParseLanguage(settings.Language);
+                _pendingLanguage = _currentLanguage;
+                ApplyLanguage();
+            }
         }
         catch { /* best effort */ }
     }
@@ -664,7 +976,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFilePath)!);
-            var settings = new AppSettings { SidebarWidth = _sidebarExpandedWidth, OutlineWidth = _outlineExpandedWidth };
+            var settings = new AppSettings
+            {
+                SidebarWidth = _sidebarExpandedWidth,
+                OutlineWidth = _outlineExpandedWidth,
+                Language = ToLanguageCode(_currentLanguage),
+            };
             File.WriteAllText(SettingsFilePath, JsonSerializer.Serialize(settings, _jsonOptions));
         }
         catch { /* best effort */ }
@@ -694,7 +1011,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             RecentMenuItem.Items.Add(new MenuItem
             {
-                Header = "No recent items",
+                Header = Text("RecentEmpty"),
                 IsEnabled = false,
                 Style = (Style)FindResource("MenuItemStyle"),
             });
@@ -752,7 +1069,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (!Directory.Exists(entry.Path))
             {
-                ShowSoftError("Folder no longer exists.");
+                ShowSoftError(Text("FolderMissing"));
                 return;
             }
             _workspaceRoot = entry.Path;
@@ -1000,6 +1317,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var modifiers = Keyboard.Modifiers;
 
+        if (SettingsDialogPopup.IsOpen)
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseSettingsDialog();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (QuickOpenPopup.IsOpen && e.Key == Key.Escape)
         {
             CloseQuickOpenPopup();
@@ -1156,9 +1484,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             var canClose = await EnsurePendingChangesHandledAsync(
-                promptMessage: "当前文档有未保存的更改。\n\n您想在关闭应用前保存这些更改吗？",
-                cancelledHint: "已取消关闭",
-                saveFailureMessage: "保存失败，请先解决错误。");
+                promptMessage: Text("CloseAppPrompt"),
+                cancelledHint: Text("CancelCloseHint"),
+                saveFailureMessage: Text("SaveFailureHint"));
             if (!canClose)
             {
                 return;
@@ -1177,8 +1505,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Open Markdown",
-            Filter = "Markdown Files|*.md;*.markdown;*.txt|All Files|*.*",
+            Title = Text("OpenMarkdownTitle"),
+            Filter = Text("OpenMarkdownFilter"),
             CheckFileExists = true,
         };
 
@@ -1306,7 +1634,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _isQuickOpenLoading = true;
-        QuickOpenLoadingText.Text = "正在索引工作区...";
+        QuickOpenLoadingText.Text = Text("QuickOpenIndexing");
         UpdateQuickOpenHelperText();
         UpdateQuickOpenVisualState();
 
@@ -1517,8 +1845,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         QuickOpenResultsList.Visibility = _quickOpenEntries.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         QuickOpenEmptyStateText.Text = string.IsNullOrWhiteSpace(query)
-            ? "No files available."
-            : $"No matches for \"{query.Trim()}\".";
+            ? Text("QuickOpenEmptyDefault")
+            : string.Format(Text("QuickOpenEmptyQueryFormat"), query.Trim());
 
         if (_quickOpenEntries.Count > 0)
         {
@@ -1612,18 +1940,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (_isQuickOpenLoading)
         {
-            QuickOpenHelperText.Text = "Indexing workspace files in the background";
+            QuickOpenHelperText.Text = _currentLanguage == AppLanguage.Chinese
+                ? "正在后台索引工作区文件"
+                : "Indexing workspace files in the background";
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(_workspaceRoot) && Directory.Exists(_workspaceRoot))
         {
             var workspaceName = Path.GetFileName(_workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            QuickOpenHelperText.Text = $"Open markdown files in {workspaceName}";
+            QuickOpenHelperText.Text = _currentLanguage == AppLanguage.Chinese
+                ? $"打开 {workspaceName} 中的 Markdown 文件"
+                : $"Open markdown files in {workspaceName}";
             return;
         }
 
-        QuickOpenHelperText.Text = "Open current or recent markdown files";
+        QuickOpenHelperText.Text = _currentLanguage == AppLanguage.Chinese
+            ? "打开当前或最近的 Markdown 文件"
+            : "Open current or recent markdown files";
     }
 
     private void UpdateQuickOpenVisualState()
@@ -1660,7 +1994,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            ShowSoftError($"Open failed: {ex.Message}");
+            ShowSoftError($"{Text("OpenFailedPrefix")}: {ex.Message}");
             ShowLoading(false);
             SetState(EditorState.Idle);
         }
@@ -1701,9 +2035,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         return await EnsurePendingChangesHandledAsync(
-            promptMessage: "当前文档有未保存的更改。\n\n您想在切换文件前保存这些更改吗？",
-            cancelledHint: "已取消切换",
-            saveFailureMessage: "保存失败，请先解决错误。");
+            promptMessage: Text("SwitchFilePrompt"),
+            cancelledHint: Text("CancelSwitchHint"),
+            saveFailureMessage: Text("SaveFailureHint"));
     }
 
     private async Task LoadDocumentAsync(string path, bool createIfMissing)
@@ -1720,7 +2054,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var loadVersion = Interlocked.Increment(ref _documentLoadVersion);
 
         SetState(EditorState.Loading);
-        ShowLoading(true, "Loading document...");
+        ShowLoading(true, Text("LoadingDocument"));
         HideError();
 
         if (createIfMissing && !File.Exists(path))
@@ -1736,7 +2070,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return;
             }
 
-            ShowSoftError("File does not exist.");
+            ShowSoftError(Text("FileMissing"));
             ShowLoading(false);
             SetState(EditorState.Idle);
             return;
@@ -1745,7 +2079,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var info = new FileInfo(path);
         if (info.Length > LargeFileThresholdBytes)
         {
-            ShowLoading(true, "Loading large file...");
+            ShowLoading(true, Text("LoadingLargeFile"));
             _webViewCore?.Stop();
             if (_e2eMode)
             {
@@ -1828,7 +2162,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        ShowLoading(true, "Rendering...");
+        ShowLoading(true, Text("Rendering"));
         _isDocumentRendering = true;
 
         if (!_editorInitialized)
@@ -1850,6 +2184,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             SendCommand(new HostCommand { Name = IpcCommands.SetTitle, Content = Path.GetFileName(_currentFilePath) });
         }
+
+        PushLanguageToWeb();
 
         _queuedDocumentForWeb = string.Empty;
     }
@@ -2127,7 +2463,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (_isSaving)
         {
-            ShowLoading(true, "Finishing save...");
+            ShowLoading(true, Text("FinishingSave"));
             while (_isSaving)
             {
                 await Task.Delay(25);
@@ -2140,7 +2476,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return true;
         }
 
-        var result = await ShowConfirmDialogAsync("未保存的更改", promptMessage);
+        var result = await ShowConfirmDialogAsync(Text("UnsavedChangesTitle"), promptMessage);
 
         if (result == MessageBoxResult.No)
         {
@@ -2150,7 +2486,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (result == MessageBoxResult.Yes)
         {
-            ShowLoading(true, "Saving current document...");
+            ShowLoading(true, Text("SavingCurrentDocument"));
             await SavePendingChangesAsync(force: true);
             if (!_dirty)
             {
@@ -2297,7 +2633,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             UpdateOutline(snapshotMarkdown);
             QueueDocumentToWeb(snapshotMarkdown);
             SetState(EditorState.Dirty, "Recovered snapshot");
-            ShowSoftError("Recovered local snapshot. Review and save.");
+            ShowSoftError(Text("RecoveredSnapshotHint"));
         }
         catch
         {
@@ -2308,8 +2644,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var dialog = new SaveFileDialog
         {
-            Title = "Export Document",
-            Filter = "HTML|*.html|PDF|*.pdf",
+            Title = Text("ExportDocumentTitle"),
+            Filter = Text("ExportDocumentFilter"),
             FileName = Path.GetFileNameWithoutExtension(_currentFilePath) + ".html",
             AddExtension = true,
         };
@@ -2342,14 +2678,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (_webViewCore is null)
         {
-            ShowSoftError("PDF export unavailable: editor not ready.");
+            ShowSoftError(Text("PdfExportUnavailable"));
             return;
         }
 
         var ok = await _webViewCore.PrintToPdfAsync(outputPath);
         if (!ok)
         {
-            ShowSoftError("PDF export failed. Please retry.");
+            ShowSoftError(Text("PdfExportFailed"));
             PostError(ErrorCodes.SaveIo, "pdf export failed", outputPath, retryable: true);
             return;
         }
@@ -2472,12 +2808,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
             {
-                WorkspaceFolderNameText.Text = "WORKSPACE";
+                WorkspaceFolderNameText.Text = Text("Workspace");
                 return;
             }
 
             var folderName = Path.GetFileName(_workspaceRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-            WorkspaceFolderNameText.Text = string.IsNullOrEmpty(folderName) ? "WORKSPACE" : folderName;
+            WorkspaceFolderNameText.Text = string.IsNullOrEmpty(folderName) ? Text("Workspace") : folderName;
 
             var root = BuildDirectoryNode(_workspaceRoot, depth: 0);
             RestoreExpandedPaths(root.Children, expandedPaths);
@@ -2648,7 +2984,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            ShowSoftError($"Open failed: {ex.Message}");
+            ShowSoftError($"{Text("OpenFailedPrefix")}: {ex.Message}");
             ShowLoading(false);
             SetState(EditorState.Idle);
         }
@@ -2878,6 +3214,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         public double SidebarWidth { get; set; }
         public double OutlineWidth { get; set; }
+        public string? Language { get; set; }
     }
 
     private void UpdateCollapsedHandlesVisibility()
@@ -3037,7 +3374,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ShowSyncConflict()
     {
-        SyncConflictText.Text = "External file changed. Keep local or reload external?";
+        SyncConflictText.Text = Text("SyncConflictPrompt");
         FadeElement(SyncConflictToast, visible: true);
     }
 
@@ -3384,7 +3721,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             RefreshFileTree();
         }
-        catch (Exception ex) { ShowSoftError($"Rename failed: {ex.Message}"); }
+        catch (Exception ex) { ShowSoftError($"{Text("RenameFailedPrefix")}: {ex.Message}"); }
     }
 
     private void OnRenameBoxKeyDown(object sender, KeyEventArgs e)
@@ -3469,7 +3806,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
             RefreshFileTree();
         }
-        catch (Exception ex) { ShowSoftError($"Move failed: {ex.Message}"); }
+        catch (Exception ex) { ShowSoftError($"{Text("MoveFailedPrefix")}: {ex.Message}"); }
     }
 
     private FileTreeNode? GetTreeNodeFromPoint(Point pos)

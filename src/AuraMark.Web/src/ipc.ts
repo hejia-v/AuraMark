@@ -25,6 +25,7 @@ export type HostCommand = {
     | 'SetImmersive'
     | 'InsertCodeBlock'
     | 'SetTitle'
+    | 'SetLanguage'
     | 'ActiveHeadingChanged'
     | 'HistoryStateChanged';
   content?: string;

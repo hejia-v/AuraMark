@@ -989,7 +989,7 @@
             BorderThickness="1"
             CornerRadius="12"
             ClipToBounds="True">
-    <Grid>
+    <Grid x:Name="WindowRoot">
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
             <RowDefinition Height="*" />
@@ -1011,16 +1011,16 @@
 
                 <Menu Style="{StaticResource TopBarMenuStyle}"
                       shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <MenuItem Header="File" Style="{StaticResource MenuItemStyle}">
-                        <MenuItem Header="New"
+                    <MenuItem x:Name="FileMenuRoot" Header="File" Style="{StaticResource MenuItemStyle}">
+                        <MenuItem x:Name="FileNewMenuItem" Header="New"
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+N"
                                   Click="OnNewFileClicked" />
-                        <MenuItem Header="Open File…"
+                        <MenuItem x:Name="FileOpenFileMenuItem" Header="Open File..."
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+O"
                                   Click="OnOpenFileClicked" />
-                        <MenuItem Header="Open Folder…"
+                        <MenuItem x:Name="FileOpenFolderMenuItem" Header="Open Folder..."
                                   Style="{StaticResource MenuItemStyle}"
                                   Click="OnOpenFolderClicked" />
                         <Separator Style="{StaticResource MenuSeparatorStyle}" />
@@ -1028,16 +1028,21 @@
                                   Header="Recent"
                                   Style="{StaticResource MenuItemStyle}" />
                         <Separator Style="{StaticResource MenuSeparatorStyle}" />
-                        <MenuItem Header="Save"
+                        <MenuItem x:Name="FileSaveMenuItem" Header="Save"
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+S"
                                   Click="OnSaveNowClicked" />
                         <Separator Style="{StaticResource MenuSeparatorStyle}" />
-                        <MenuItem Header="Export…"
+                        <MenuItem x:Name="FileExportMenuItem" Header="Export..."
                                   Style="{StaticResource MenuItemStyle}"
                                   Click="OnExportHtmlClicked" />
+                        <Separator Style="{StaticResource MenuSeparatorStyle}" />
+                        <MenuItem x:Name="FileSettingsMenuItem"
+                                  Header="Settings"
+                                  Style="{StaticResource MenuItemStyle}"
+                                  Click="OnOpenSettingsClicked" />
                     </MenuItem>
-                    <MenuItem Header="Edit" Style="{StaticResource MenuItemStyle}">
+                    <MenuItem x:Name="EditMenuRoot" Header="Edit" Style="{StaticResource MenuItemStyle}">
                         <MenuItem x:Name="UndoMenuItem"
                                   Header="Undo"
                                   Style="{StaticResource MenuItemStyle}"
@@ -1051,12 +1056,12 @@
                                   IsEnabled="False"
                                   Click="OnRedoClicked" />
                     </MenuItem>
-                    <MenuItem Header="View" Style="{StaticResource MenuItemStyle}">
-                        <MenuItem Header="Toggle Workspace"
+                    <MenuItem x:Name="ViewMenuRoot" Header="View" Style="{StaticResource MenuItemStyle}">
+                        <MenuItem x:Name="ViewToggleWorkspaceMenuItem" Header="Toggle Workspace"
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+Shift+L"
                                   Click="OnToggleSidebarClicked" />
-                        <MenuItem Header="Toggle Outline"
+                        <MenuItem x:Name="ViewToggleOutlineMenuItem" Header="Toggle Outline"
                                   Style="{StaticResource MenuItemStyle}"
                                   InputGestureText="Ctrl+Shift+O"
                                   Click="OnToggleOutlineClicked" />
@@ -1142,6 +1147,7 @@
                                       Fill="#677489"
                                       Data="M10.5 3a7.5 7.5 0 0 1 5.645 12.438l4.709 4.708a.5.5 0 0 1-.708.708l-4.708-4.709A7.5 7.5 0 1 1 10.5 3zm0 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12z" />
                                 <TextBlock Grid.Column="1"
+                                           x:Name="QuickOpenButtonText"
                                            VerticalAlignment="Center"
                                            FontSize="12"
                                            Foreground="#677489"
@@ -1852,7 +1858,8 @@
                                 </Path.LayoutTransform>
                             </Path>
                         </Button>
-                        <TextBlock Grid.Column="1"
+                        <TextBlock x:Name="OutlineHeaderText"
+                                   Grid.Column="1"
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    FontWeight="SemiBold"
@@ -2015,6 +2022,371 @@
                         </Path.LayoutTransform>
                     </Path>
                 </Button>
+            </Popup>
+
+            <!-- Settings dialog uses Popup to stay above WebView2 airspace. -->
+            <Popup x:Name="SettingsDialogPopup"
+                   Placement="Relative"
+                   PlacementTarget="{Binding ElementName=WindowRoot}"
+                   HorizontalOffset="0"
+                   VerticalOffset="0"
+                   AllowsTransparency="True"
+                   PopupAnimation="Fade"
+                   StaysOpen="True"
+                   IsOpen="False">
+                <Grid Width="{Binding ActualWidth, ElementName=WindowRoot}"
+                      Height="{Binding ActualHeight, ElementName=WindowRoot}">
+                    <Grid.Resources>
+                        <!-- Redesigned action button: pill-shaped, taller -->
+                        <Style x:Key="SettingsActionButtonStyle" TargetType="Button">
+                            <Setter Property="Height" Value="40" />
+                            <Setter Property="MinWidth" Value="100" />
+                            <Setter Property="Padding" Value="22,0" />
+                            <Setter Property="Margin" Value="10,0,0,0" />
+                            <Setter Property="FontSize" Value="13.5" />
+                            <Setter Property="FontWeight" Value="Medium" />
+                            <Setter Property="Background" Value="#FFFFFF" />
+                            <Setter Property="BorderBrush" Value="#D5DAE2" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Setter Property="Foreground" Value="#374151" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="BtnBg"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="20">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="BtnBg" Property="Background" Value="#F3F5F8" />
+                                                <Setter TargetName="BtnBg" Property="BorderBrush" Value="#C1C7D0" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="BtnBg" Property="Background" Value="#E8ECF1" />
+                                                <Setter TargetName="BtnBg" Property="BorderBrush" Value="#A8B2BE" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
+                        <!-- Primary button: filled blue pill -->
+                        <Style x:Key="SettingsPrimaryButtonStyle"
+                               TargetType="Button"
+                               BasedOn="{StaticResource SettingsActionButtonStyle}">
+                            <Setter Property="Background" Value="#2563EB" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Setter Property="Foreground" Value="#FFFFFF" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="BtnBg"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="20">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="BtnBg" Property="Background" Value="#1D4ED8" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="BtnBg" Property="Background" Value="#1E40AF" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
+                        <!-- Redesigned language option: card with left accent bar -->
+                        <Style x:Key="SettingsLanguageOptionStyle" TargetType="RadioButton">
+                            <Setter Property="Margin" Value="0,0,0,10" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="RadioButton">
+                                        <Border x:Name="OptionBorder"
+                                                Background="#FAFBFC"
+                                                BorderBrush="#E2E6EC"
+                                                BorderThickness="1"
+                                                CornerRadius="12"
+                                                Padding="0">
+                                            <Grid>
+                                                <!-- Left accent bar (hidden by default, shown when selected) -->
+                                                <Border x:Name="AccentBar"
+                                                        HorizontalAlignment="Left"
+                                                        VerticalAlignment="Stretch"
+                                                        Width="3"
+                                                        Margin="0,8,0,8"
+                                                        CornerRadius="1.5"
+                                                        Background="#2563EB"
+                                                        Opacity="0" />
+
+                                                <DockPanel Margin="18,14,18,14"
+                                                           LastChildFill="True">
+                                                    <!-- Radio circle -->
+                                                    <Border Width="20"
+                                                            Height="20"
+                                                            Margin="0,0,14,0"
+                                                            VerticalAlignment="Center"
+                                                            CornerRadius="10"
+                                                            BorderBrush="#B0B8C4"
+                                                            BorderThickness="1.5">
+                                                        <Border x:Name="OptionDot"
+                                                                Width="9"
+                                                                Height="9"
+                                                                Background="#2563EB"
+                                                                CornerRadius="4.5"
+                                                                Opacity="0"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <ContentPresenter VerticalAlignment="Center" />
+                                                </DockPanel>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="OptionBorder" Property="Background" Value="#F4F6F9" />
+                                                <Setter TargetName="OptionBorder" Property="BorderBrush" Value="#D0D7E0" />
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="OptionBorder" Property="BorderBrush" Value="#93C5FD" />
+                                                <Setter TargetName="OptionBorder" Property="Background" Value="#EFF6FF" />
+                                                <Setter TargetName="OptionDot" Property="Opacity" Value="1" />
+                                                <Setter TargetName="AccentBar" Property="Opacity" Value="1" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+
+                        <!-- Close button with hover background -->
+                        <Style x:Key="SettingsCloseButtonStyle" TargetType="Button">
+                            <Setter Property="Width" Value="34" />
+                            <Setter Property="Height" Value="34" />
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="CloseBg"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="10">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="CloseBg" Property="Background" Value="#F0F1F4" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="CloseBg" Property="Background" Value="#E3E5EA" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Grid.Resources>
+
+                    <!-- Scrim -->
+                    <Border Background="#66000000" />
+
+                    <!-- Dialog card: wider, translucent, deeper shadow -->
+                    <Border Width="620"
+                            MaxWidth="620"
+                            Background="#FBFBFD"
+                            BorderBrush="#DFE3EA"
+                            BorderThickness="1"
+                            CornerRadius="18"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="36"
+                                              ShadowDepth="12"
+                                              Direction="270"
+                                              Opacity="0.15"
+                                              Color="#1A2332" />
+                        </Border.Effect>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- ═══ Header ═══ -->
+                            <Border Background="#F6F8FB"
+                                    CornerRadius="18,18,0,0"
+                                    Padding="32,26,28,22">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Orientation="Horizontal"
+                                                VerticalAlignment="Center">
+                                        <!-- Icon badge -->
+                                        <Border Width="44"
+                                                Height="44"
+                                                CornerRadius="12"
+                                                Background="#E4EDFF">
+                                            <Path Width="21"
+                                                  Height="21"
+                                                  Stretch="Uniform"
+                                                  Fill="#2563EB"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  Data="M10 2.75a1 1 0 0 1 1 1v.587a5.76 5.76 0 0 1 1.54.64l.416-.415a1 1 0 1 1 1.415 1.414l-.414.415c.29.483.505.999.638 1.54H15.25a1 1 0 1 1 0 2h-.587a5.76 5.76 0 0 1-.64 1.54l.415.416a1 1 0 0 1-1.414 1.414l-.415-.414a5.76 5.76 0 0 1-1.54.638v.587a1 1 0 1 1-2 0v-.587a5.76 5.76 0 0 1-1.54-.64l-.416.415a1 1 0 1 1-1.414-1.414l.414-.415a5.76 5.76 0 0 1-.638-1.54H4.75a1 1 0 1 1 0-2h.587c.133-.541.348-1.057.64-1.54l-.415-.416a1 1 0 1 1 1.414-1.414l.415.414a5.76 5.76 0 0 1 1.54-.638V3.75a1 1 0 0 1 1-1m0 4.25a3 3 0 1 0 0 6 3 3 0 0 0 0-6" />
+                                        </Border>
+                                        <StackPanel Margin="16,0,0,0"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock x:Name="SettingsDialogTitle"
+                                                       FontSize="22"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#111827"
+                                                       Text="Settings" />
+                                            <TextBlock x:Name="SettingsDialogSubtitle"
+                                                       Margin="0,4,0,0"
+                                                       FontSize="13.5"
+                                                       Foreground="#8B95A5"
+                                                       Text="Configure the app language." />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Close button -->
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource SettingsCloseButtonStyle}"
+                                            VerticalAlignment="Center"
+                                            ToolTip="Close"
+                                            AutomationProperties.AutomationId="SettingsDialogCloseButton"
+                                            Click="OnCloseSettingsClicked">
+                                        <Path Width="11"
+                                              Height="11"
+                                              Stretch="Uniform"
+                                              Fill="#8B95A5"
+                                              Data="M11.115 3.915a.7.7 0 0 1 .97.97l-.09.11L8.99 8l3.005 3.005.09.11a.7.7 0 0 1-.97.97l-.11-.09L8 8.99l-3.005 3.005a.7.7 0 0 1-.99-.99L7.01 8 4.005 4.995l-.09-.11a.7.7 0 0 1 .97-.97l.11.09L8 7.01l3.005-3.005z" />
+                                    </Button>
+                                </Grid>
+                            </Border>
+
+                            <!-- ═══ Soft separator ═══ -->
+                            <Border Grid.Row="0"
+                                    Height="1"
+                                    Margin="0"
+                                    VerticalAlignment="Bottom"
+                                    Background="#E2E6ED" />
+
+                            <!-- ═══ Body: direct section layout (no TabControl) ═══ -->
+                            <Border Grid.Row="1"
+                                    Margin="0"
+                                    Padding="32,24,32,14">
+                                <!-- Hidden TabControl kept for code-behind references, but collapsed -->
+                                <Border.Resources>
+                                    <Style TargetType="TabControl">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </Style>
+                                </Border.Resources>
+                                <Grid>
+                                    <!-- Hidden TabControl so x:Name references still compile -->
+                                    <TabControl x:Name="SettingsTabControl"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Visibility="Collapsed">
+                                        <TabItem x:Name="SettingsLanguageTab"
+                                                 Header="Language" />
+                                    </TabControl>
+
+                                    <!-- Visible section content -->
+                                    <StackPanel>
+                                        <!-- Section heading -->
+                                        <TextBlock x:Name="SettingsLanguageLabel"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#1F2937"
+                                                   Text="Display Language" />
+                                        <TextBlock x:Name="SettingsLanguageDescription"
+                                                   Margin="0,6,0,24"
+                                                   FontSize="13"
+                                                   Foreground="#7C8696"
+                                                   LineHeight="20"
+                                                   Text="Choose the language used by the app chrome and editor shell." />
+
+                                        <!-- Language option cards -->
+                                        <RadioButton x:Name="SettingsLanguageChineseOption"
+                                                     GroupName="SettingsLanguage"
+                                                     Style="{StaticResource SettingsLanguageOptionStyle}"
+                                                     Checked="OnSettingsLanguageOptionChecked"
+                                                     AutomationProperties.AutomationId="SettingsLanguageChineseOption">
+                                            <StackPanel>
+                                                <TextBlock x:Name="SettingsLanguageChineseText"
+                                                           FontSize="14.5"
+                                                           FontWeight="Medium"
+                                                           Foreground="#1F2937"
+                                                           Text="Chinese" />
+                                                <TextBlock FontSize="12"
+                                                           Foreground="#9CA3AF"
+                                                           Margin="0,2,0,0"
+                                                           Text="简体中文" />
+                                            </StackPanel>
+                                        </RadioButton>
+                                        <RadioButton x:Name="SettingsLanguageEnglishOption"
+                                                     GroupName="SettingsLanguage"
+                                                     Style="{StaticResource SettingsLanguageOptionStyle}"
+                                                     Checked="OnSettingsLanguageOptionChecked"
+                                                     AutomationProperties.AutomationId="SettingsLanguageEnglishOption">
+                                            <StackPanel>
+                                                <TextBlock x:Name="SettingsLanguageEnglishText"
+                                                           FontSize="14.5"
+                                                           FontWeight="Medium"
+                                                           Foreground="#1F2937"
+                                                           Text="English" />
+                                                <TextBlock FontSize="12"
+                                                           Foreground="#9CA3AF"
+                                                           Margin="0,2,0,0"
+                                                           Text="English (US)" />
+                                            </StackPanel>
+                                        </RadioButton>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- ═══ Footer separator ═══ -->
+                            <Border Grid.Row="2"
+                                    Height="1"
+                                    Margin="28,0"
+                                    VerticalAlignment="Top"
+                                    Background="#EAEDF2" />
+
+                            <!-- ═══ Footer buttons ═══ -->
+                            <StackPanel Grid.Row="2"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,20,28,24">
+                                <Button x:Name="SettingsDialogCancelButton"
+                                        Style="{StaticResource SettingsActionButtonStyle}"
+                                        Content="Cancel"
+                                        Click="OnCloseSettingsClicked" />
+                                <Button x:Name="SettingsDialogApplyButton"
+                                        Style="{StaticResource SettingsPrimaryButtonStyle}"
+                                        Content="Apply"
+                                        AutomationProperties.AutomationId="SettingsDialogApplyButton"
+                                        Click="OnApplySettingsClicked" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Popup>
         </Grid>
 

@@ -68,6 +68,23 @@ let sourceRedoStack: string[] = [];
 let sourceLastEditAt = 0;
 let sourceLastEditKind = '';
 let pendingSourceInputType = '';
+let uiLanguage = 'en-US';
+
+const localize = (key: 'markdownSource' | 'unsavedChanges') => {
+  const chinese = uiLanguage.toLowerCase().startsWith('zh');
+  if (key === 'markdownSource') {
+    return chinese ? 'Markdown 源码' : 'Markdown source';
+  }
+
+  return chinese ? '存在未保存的更改' : 'Unsaved changes';
+};
+
+const applyLanguage = (language: string) => {
+  uiLanguage = language || 'en-US';
+  document.documentElement.lang = uiLanguage;
+  sourceEditor.setAttribute('aria-label', localize('markdownSource'));
+  updateDirtyDot();
+};
 
 window.addEventListener('error', (event) => {
   sendToHost({
@@ -112,7 +129,7 @@ const sendHistoryState = (canUndo: boolean, canRedo: boolean) => {
 const updateDirtyDot = () => {
   const dirty = currentMarkdown !== savedMarkdown;
   dotEl.className = 'doc-status-dot' + (dirty ? ' state-dirty' : '');
-  dotEl.title = dirty ? 'Unsaved changes' : '';
+  dotEl.title = dirty ? localize('unsavedChanges') : '';
 };
 
 const setStatus = (_text: string) => {
@@ -609,6 +626,9 @@ const handleHostCommand = (command: HostCommand) => {
     case 'SetTitle':
       titleTextEl.textContent = command.content ?? 'Untitled.md';
       return;
+    case 'SetLanguage':
+      applyLanguage(command.content ?? 'en-US');
+      return;
     case 'ToggleSidebar':
       sendToHost({
         type: 'Command',
@@ -733,4 +753,5 @@ onHostMessage((payload: WebMessagePayload) => {
 });
 
 setStatus('Waiting host init...');
+applyLanguage(uiLanguage);
 sendAck('Ready');
