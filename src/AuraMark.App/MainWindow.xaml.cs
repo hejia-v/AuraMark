@@ -57,6 +57,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static readonly string LastWorkspaceFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "last_workspace.txt");
+    private static readonly string LastFileFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AuraMark", "last_file.txt");
     private static readonly string SettingsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "settings.json");
@@ -204,6 +207,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             startupPath = _e2eOpenFilePath;
             createIfMissing = false;
+        }
+        else if (!_e2eMode)
+        {
+            var lastFile = LoadLastFile();
+            if (!string.IsNullOrWhiteSpace(lastFile) && File.Exists(lastFile))
+            {
+                startupPath = lastFile;
+                createIfMissing = false;
+            }
         }
 
         _currentFilePath = startupPath;
@@ -392,6 +404,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (!File.Exists(LastWorkspaceFilePath)) return string.Empty;
             return File.ReadAllText(LastWorkspaceFilePath).Trim();
+        }
+        catch { return string.Empty; }
+    }
+
+    private void SaveLastFile(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LastFileFilePath)!);
+            File.WriteAllText(LastFileFilePath, path);
+        }
+        catch { /* best effort */ }
+    }
+
+    private string LoadLastFile()
+    {
+        try
+        {
+            if (!File.Exists(LastFileFilePath)) return string.Empty;
+            return File.ReadAllText(LastFileFilePath).Trim();
         }
         catch { return string.Empty; }
     }
@@ -1412,6 +1444,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (!createIfMissing)
         {
             AddToRecent(path, isFolder: false);
+            SaveLastFile(path);
         }
 
         SetState(EditorState.Editing);
