@@ -1882,6 +1882,174 @@
                 </Button>
             </Popup>
         </Grid>
+
+        <!-- Custom Confirm Dialog Overlay -->
+        <Grid x:Name="ConfirmDialogOverlay"
+              Grid.RowSpan="2"
+              Panel.ZIndex="9999"
+              Visibility="Collapsed"
+              Opacity="0">
+            <Grid.Resources>
+                <!-- Base Dialog Button Style -->
+                <Style x:Key="DialogButtonStyle" TargetType="Button">
+                    <Setter Property="FontSize" Value="13"/>
+                    <Setter Property="FontWeight" Value="Medium"/>
+                    <Setter Property="Padding" Value="20,8"/>
+                    <Setter Property="Margin" Value="12,0,0,0"/>
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Setter Property="Background" Value="#FFFFFF"/>
+                    <Setter Property="BorderBrush" Value="#D1D5DB"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="Foreground" Value="#374151"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="6">
+                                    <ContentPresenter Margin="{TemplateBinding Padding}" 
+                                                      HorizontalAlignment="Center" 
+                                                      VerticalAlignment="Center"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#F3F4F6"/>
+                                        <Setter Property="BorderBrush" Value="#C1C7D0"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                        <Setter Property="BorderBrush" Value="#9CA3AF"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+
+                <!-- Primary Dialog Button Style (Save) -->
+                <Style x:Key="PrimaryDialogButtonStyle" TargetType="Button" BasedOn="{StaticResource DialogButtonStyle}">
+                    <Setter Property="Background" Value="#2563EB"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="6">
+                                    <ContentPresenter Margin="{TemplateBinding Padding}" 
+                                                      HorizontalAlignment="Center" 
+                                                      VerticalAlignment="Center"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#1D4ED8"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter Property="Background" Value="#1E40AF"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+
+                <!-- Destructive Dialog Button Style (Discard) -->
+                <Style x:Key="DestructiveDialogButtonStyle" TargetType="Button" BasedOn="{StaticResource DialogButtonStyle}">
+                    <Setter Property="Foreground" Value="#DC2626"/>
+                    <Setter Property="BorderBrush" Value="#FCA5A5"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="6">
+                                    <ContentPresenter Margin="{TemplateBinding Padding}" 
+                                                      HorizontalAlignment="Center" 
+                                                      VerticalAlignment="Center"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#FEF2F2"/>
+                                        <Setter Property="BorderBrush" Value="#F87171"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter Property="Background" Value="#FEE2E2"/>
+                                        <Setter Property="BorderBrush" Value="#EF4444"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Grid.Resources>
+
+            <!-- Scrim -->
+            <Border Background="#66000000" />
+            
+            <!-- Dialog Card -->
+            <Border HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Width="400"
+                    Padding="32,28"
+                    Background="#FFFFFF"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="6"
+                                      Direction="270" Opacity="0.12" Color="#000000" />
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Title row -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <!-- Icon Badge -->
+                        <Border Width="32" Height="32" CornerRadius="16" Background="#FFFBEB" VerticalAlignment="Center">
+                            <Path Width="16" Height="16" Stretch="Uniform"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Fill="#F59E0B"
+                                  Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                        </Border>
+                        <TextBlock x:Name="ConfirmDialogTitle"
+                                   FontSize="16" FontWeight="SemiBold"
+                                   Foreground="#111827"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0"
+                                   Text="未保存的更改" />
+                    </StackPanel>
+                    
+                    <!-- Message -->
+                    <TextBlock x:Name="ConfirmDialogMessage"
+                               FontSize="14" Foreground="#4B5563"
+                               TextWrapping="Wrap" LineHeight="22"
+                               Margin="0,0,0,32" />
+                    
+                    <!-- Buttons: right-aligned, Cancel | Discard | Save -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="ConfirmDialogCancelButton"
+                                Style="{StaticResource DialogButtonStyle}"
+                                Content="取消"
+                                Margin="0,0,0,0"
+                                AutomationProperties.AutomationId="ConfirmDialogCancelButton"
+                                Click="OnConfirmDialogCancelClicked" />
+                        <Button x:Name="ConfirmDialogDiscardButton"
+                                Style="{StaticResource DestructiveDialogButtonStyle}"
+                                Content="不保存"
+                                AutomationProperties.AutomationId="ConfirmDialogDiscardButton"
+                                Click="OnConfirmDialogDiscardClicked" />
+                        <Button x:Name="ConfirmDialogSaveButton"
+                                Style="{StaticResource PrimaryDialogButtonStyle}"
+                                Content="保存"
+                                AutomationProperties.AutomationId="ConfirmDialogSaveButton"
+                                Click="OnConfirmDialogSaveClicked" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
     </Border>
 </Window>

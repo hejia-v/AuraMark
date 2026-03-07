@@ -125,6 +125,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _inputFrozen;
     private bool _allowWindowClose;
     private bool _isCloseConfirmationInProgress;
+    private TaskCompletionSource<MessageBoxResult>? _confirmDialogTcs;
     private bool _isDraggingSidebar;
     private double _sidebarDragStartWindowX;
     private double _sidebarDragStartWidth;
@@ -796,9 +797,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             var canClose = await EnsurePendingChangesHandledAsync(
-                promptMessage: "Current document has unsaved changes.\n\nYes: save changes\nNo: discard changes\nCancel: keep the app open",
-                cancelledHint: "Close cancelled",
-                saveFailureMessage: "Save failed. Resolve the error before closing.");
+                promptMessage: "当前文档有未保存的更改。\n\n您想在关闭应用前保存这些更改吗？",
+                cancelledHint: "已取消关闭",
+                saveFailureMessage: "保存失败，请先解决错误。");
             if (!canClose)
             {
                 return;
@@ -1341,9 +1342,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         return await EnsurePendingChangesHandledAsync(
-            promptMessage: "Current document has unsaved changes.\n\nYes: save changes\nNo: discard changes\nCancel: stay on the current file",
-            cancelledHint: "Switch cancelled",
-            saveFailureMessage: "Save failed. Resolve the error before switching files.");
+            promptMessage: "当前文档有未保存的更改。\n\n您想在切换文件前保存这些更改吗？",
+            cancelledHint: "已取消切换",
+            saveFailureMessage: "保存失败，请先解决错误。");
     }
 
     private async Task LoadDocumentAsync(string path, bool createIfMissing)
@@ -1774,13 +1775,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return true;
         }
 
-        var result = System.Windows.MessageBox.Show(
-            this,
-            promptMessage,
-            "Unsaved changes",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Warning,
-            MessageBoxResult.Yes);
+        var result = await ShowConfirmDialogAsync("未保存的更改", promptMessage);
 
         if (result == MessageBoxResult.No)
         {
@@ -2642,6 +2637,37 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void HideError()
     {
         FadeElement(ErrorToast, visible: false);
+    }
+
+    private Task<MessageBoxResult> ShowConfirmDialogAsync(string title, string message)
+    {
+        _confirmDialogTcs = new TaskCompletionSource<MessageBoxResult>();
+        ConfirmDialogTitle.Text = title;
+        ConfirmDialogMessage.Text = message;
+        WebViewHost.Visibility = Visibility.Hidden;
+        FadeElement(ConfirmDialogOverlay, visible: true);
+        return _confirmDialogTcs.Task;
+    }
+
+    private void OnConfirmDialogSaveClicked(object sender, RoutedEventArgs e)
+    {
+        FadeElement(ConfirmDialogOverlay, visible: false);
+        _confirmDialogTcs?.TrySetResult(MessageBoxResult.Yes);
+        WebViewHost.Visibility = Visibility.Visible;
+    }
+
+    private void OnConfirmDialogDiscardClicked(object sender, RoutedEventArgs e)
+    {
+        FadeElement(ConfirmDialogOverlay, visible: false);
+        _confirmDialogTcs?.TrySetResult(MessageBoxResult.No);
+        WebViewHost.Visibility = Visibility.Visible;
+    }
+
+    private void OnConfirmDialogCancelClicked(object sender, RoutedEventArgs e)
+    {
+        FadeElement(ConfirmDialogOverlay, visible: false);
+        _confirmDialogTcs?.TrySetResult(MessageBoxResult.Cancel);
+        WebViewHost.Visibility = Visibility.Visible;
     }
 
     private void ShowSyncConflict()
