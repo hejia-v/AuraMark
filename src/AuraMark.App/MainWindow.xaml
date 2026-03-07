@@ -1071,9 +1071,10 @@
                                    Text="Idle" />
                     </StackPanel>
 
-                    <Grid Grid.Column="1"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center">
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
                         <Button x:Name="QuickOpenButton"
                                 Style="{StaticResource QuickOpenButtonStyle}"
                                 Click="OnQuickOpenButtonClicked"
@@ -1113,6 +1114,47 @@
                                                Text="Ctrl+P" />
                                 </Border>
                             </Grid>
+                        </Button>
+
+                        <Button x:Name="RecentFilesButton"
+                                Width="24"
+                                Height="24"
+                                Margin="6,0,0,0"
+                                Padding="0"
+                                BorderThickness="1"
+                                BorderBrush="#CDD6E1"
+                                Background="#FAFBFC"
+                                Cursor="Hand"
+                                ToolTip="Recent Files"
+                                Click="OnRecentFilesButtonClicked"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bg"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="7">
+                                        <Path Width="12"
+                                              Height="12"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Stretch="Uniform"
+                                              Fill="#738196"
+                                              Data="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm0 18c-4.411 0-8-3.589-8-8s3.589-8 8-8 8 3.589 8 8-3.589 8-8 8zm1-13h-2v6l5.25 3.15.75-1.23-4-2.42V7z" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bg" Property="Background" Value="#FFFFFF" />
+                                            <Setter TargetName="Bg" Property="BorderBrush" Value="#B9C5D2" />
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="Bg" Property="Background" Value="#EDF2F7" />
+                                            <Setter TargetName="Bg" Property="BorderBrush" Value="#AEBCCB" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
                         </Button>
 
                         <Popup x:Name="QuickOpenPopup"
@@ -1417,7 +1459,74 @@
                                 </Grid>
                             </Border>
                         </Popup>
-                    </Grid>
+
+                        <Popup x:Name="RecentFilesPopup"
+                               PlacementTarget="{Binding ElementName=RecentFilesButton}"
+                               Placement="Bottom"
+                               VerticalOffset="8"
+                               AllowsTransparency="True"
+                               PopupAnimation="Fade"
+                               StaysOpen="False"
+                               Opened="OnRecentFilesPopupOpened">
+                            <Border Width="360"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#DCE4EE"
+                                    BorderThickness="1"
+                                    CornerRadius="12"
+                                    Padding="10">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#000000"
+                                                      Opacity="0.12"
+                                                      BlurRadius="24"
+                                                      ShadowDepth="6"
+                                                      Direction="270" />
+                                </Border.Effect>
+                                <Grid MaxHeight="480">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Margin="6,4,6,8"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="#434C5E"
+                                               Text="Recent Files" />
+
+                                    <TextBlock x:Name="RecentFilesEmptyText"
+                                               Grid.Row="1"
+                                               Margin="16"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               FontSize="12"
+                                               Foreground="#8A96A7"
+                                               Text="No recent files"
+                                               Visibility="Collapsed" />
+
+                                    <ListBox x:Name="RecentFilesList"
+                                             Grid.Row="1"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             ItemContainerStyle="{StaticResource QuickOpenResultItemStyle}"
+                                             SelectionMode="Single"
+                                             PreviewMouseLeftButtonUp="OnRecentFileItemClicked">
+                                        <ListBox.Template>
+                                            <ControlTemplate TargetType="ListBox">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                              HorizontalScrollBarVisibility="Disabled"
+                                                              Focusable="False">
+                                                    <ScrollViewer.Resources>
+                                                        <Style TargetType="ScrollBar" BasedOn="{StaticResource QuickOpenVerticalScrollBarStyle}" />
+                                                    </ScrollViewer.Resources>
+                                                    <ItemsPresenter />
+                                                </ScrollViewer>
+                                            </ControlTemplate>
+                                        </ListBox.Template>
+                                    </ListBox>
+                                </Grid>
+                            </Border>
+                        </Popup>
+                    </StackPanel>
                 </Grid>
 
                 <StackPanel Grid.Column="2"

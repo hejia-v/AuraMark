@@ -49,7 +49,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _outlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
-    private const int MaxRecentEntries = 15;
+    private const int MaxRecentEntries = 25;
     private static readonly string RecentFilesJsonPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "recent.json");
@@ -551,6 +551,109 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await LoadDocumentAsync(entry.Path, createIfMissing: false);
         }
+    }
+
+    private void OnRecentFilesButtonClicked(object sender, RoutedEventArgs e)
+    {
+        RecentFilesPopup.IsOpen = !RecentFilesPopup.IsOpen;
+    }
+
+    private void OnRecentFilesPopupOpened(object? sender, EventArgs e)
+    {
+        var entries = LoadRecentEntries()
+            .Where(entry => !entry.IsFolder && File.Exists(entry.Path))
+            .Take(MaxRecentEntries)
+            .ToList();
+
+        RecentFilesList.Items.Clear();
+
+        if (entries.Count == 0)
+        {
+            RecentFilesEmptyText.Visibility = Visibility.Visible;
+            RecentFilesList.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        RecentFilesEmptyText.Visibility = Visibility.Collapsed;
+        RecentFilesList.Visibility = Visibility.Visible;
+
+        foreach (var entry in entries)
+        {
+            var fileName = Path.GetFileName(entry.Path);
+            var dirPath = Path.GetDirectoryName(entry.Path) ?? string.Empty;
+
+            var iconBorder = new Border
+            {
+                Width = 28,
+                Height = 28,
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromRgb(0xF3, 0xF6, 0xF9)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE1, 0xE7, 0xEF)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(7),
+                Child = new System.Windows.Shapes.Path
+                {
+                    Width = 14,
+                    Height = 14,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    Stretch = Stretch.Uniform,
+                    Fill = new SolidColorBrush(Color.FromRgb(0x6F, 0x7F, 0x93)),
+                    Data = Geometry.Parse(FileIconPathData),
+                },
+            };
+
+            var nameBlock = new TextBlock
+            {
+                Text = fileName,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x2F, 0x39, 0x47)),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+
+            var pathBlock = new TextBlock
+            {
+                Text = dirPath,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x7F, 0x8A, 0x9A)),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 2, 0, 0),
+            };
+
+            var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            textStack.Children.Add(nameBlock);
+            textStack.Children.Add(pathBlock);
+
+            var itemGrid = new Grid();
+            itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(iconBorder, 0);
+            Grid.SetColumn(textStack, 1);
+            itemGrid.Children.Add(iconBorder);
+            itemGrid.Children.Add(textStack);
+
+            var listItem = new ListBoxItem
+            {
+                Content = itemGrid,
+                Tag = entry.Path,
+                Style = (System.Windows.Style)FindResource("QuickOpenResultItemStyle"),
+            };
+            RecentFilesList.Items.Add(listItem);
+        }
+    }
+
+    private async void OnRecentFileItemClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (RecentFilesList.SelectedItem is not ListBoxItem selectedItem)
+            return;
+
+        if (selectedItem.Tag is not string filePath)
+            return;
+
+        RecentFilesPopup.IsOpen = false;
+        await LoadDocumentAsync(filePath, createIfMissing: false);
     }
 
     private async void OnSaveNowClicked(object sender, RoutedEventArgs e)
