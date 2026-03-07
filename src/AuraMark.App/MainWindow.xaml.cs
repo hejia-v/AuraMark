@@ -56,8 +56,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _outlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex SkillFrontMatterNameRegex = new(@"^\s*name\s*:\s*(.+?)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex MarkdownHeadingRegex = new(@"^\s*#\s+(.+?)\s*$", RegexOptions.Compiled);
     private const int MaxRecentEntries = 25;
     private const int MaxOpenFileHistoryEntries = 100;
+    private static readonly (string DirectoryName, string Label)[] SkillSources =
+    [
+        (".codex", ".codex"),
+        (".claude", ".claude"),
+        (".agents", ".agents"),
+    ];
     private static readonly string RecentFilesJsonPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "recent.json");
@@ -253,6 +261,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "Workspace") => "工作区",
             (AppLanguage.Chinese, "TooltipBack") => "后退",
             (AppLanguage.Chinese, "TooltipForward") => "前进",
+            (AppLanguage.Chinese, "SkillsButtonTooltip") => "技能",
+            (AppLanguage.Chinese, "SkillsPopupTitle") => "技能文档",
+            (AppLanguage.Chinese, "SkillsEmpty") => "未找到技能文档。",
             (AppLanguage.Chinese, "LoadingDocument") => "正在加载文档...",
             (AppLanguage.Chinese, "LoadingLargeFile") => "正在加载大文件...",
             (AppLanguage.Chinese, "Rendering") => "正在渲染...",
@@ -320,6 +331,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "Workspace") => "WORKSPACE",
             (AppLanguage.English, "TooltipBack") => "Back",
             (AppLanguage.English, "TooltipForward") => "Forward",
+            (AppLanguage.English, "SkillsButtonTooltip") => "Skills",
+            (AppLanguage.English, "SkillsPopupTitle") => "Skill Docs",
+            (AppLanguage.English, "SkillsEmpty") => "No skill documents found.",
             (AppLanguage.English, "LoadingDocument") => "Loading document...",
             (AppLanguage.English, "LoadingLargeFile") => "Loading large file...",
             (AppLanguage.English, "Rendering") => "Rendering...",
@@ -396,6 +410,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SettingsDialogApplyButton.Content = Text("DialogApply");
         OpenHistoryBackButton.ToolTip = Text("TooltipBack");
         OpenHistoryForwardButton.ToolTip = Text("TooltipForward");
+        SkillsButton.ToolTip = Text("SkillsButtonTooltip");
+        SkillsPopupTitleText.Text = Text("SkillsPopupTitle");
+        SkillsEmptyText.Text = Text("SkillsEmpty");
         QuickOpenButton.ToolTip = Text("QuickOpenButtonTooltip");
         QuickOpenButtonText.Text = Text("QuickOpenButtonLabel");
         QuickOpenPlaceholderText.Text = Text("QuickOpenPlaceholder");
@@ -1093,6 +1110,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         RecentFilesPopup.IsOpen = !RecentFilesPopup.IsOpen;
     }
 
+    private void OnSkillsButtonClicked(object sender, RoutedEventArgs e)
+    {
+        RecentFilesPopup.IsOpen = false;
+        if (QuickOpenPopup.IsOpen)
+        {
+            CloseQuickOpenPopup();
+        }
+
+        SkillsPopup.IsOpen = !SkillsPopup.IsOpen;
+    }
+
     private async void OnOpenHistoryBackButtonClicked(object sender, RoutedEventArgs e)
     {
         await NavigateOpenFileHistoryAsync(-1);
@@ -1189,6 +1217,107 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void OnSkillsPopupOpened(object? sender, EventArgs e)
+    {
+        var entries = LoadSkillDocumentEntries();
+
+        SkillsList.Items.Clear();
+
+        if (entries.Count == 0)
+        {
+            SkillsEmptyText.Visibility = Visibility.Visible;
+            SkillsList.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        SkillsEmptyText.Visibility = Visibility.Collapsed;
+        SkillsList.Visibility = Visibility.Visible;
+
+        foreach (var entry in entries)
+        {
+            var iconBorder = new Border
+            {
+                Width = 28,
+                Height = 28,
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new SolidColorBrush(Color.FromRgb(0xF3, 0xF6, 0xF9)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE1, 0xE7, 0xEF)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(7),
+                Child = new System.Windows.Shapes.Path
+                {
+                    Width = 14,
+                    Height = 14,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    Stretch = Stretch.Uniform,
+                    Fill = new SolidColorBrush(Color.FromRgb(0x6F, 0x7F, 0x93)),
+                    Data = Geometry.Parse(FolderIconPathData),
+                },
+            };
+
+            var nameBlock = new TextBlock
+            {
+                Text = entry.DisplayName,
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x2F, 0x39, 0x47)),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+
+            var pathBlock = new TextBlock
+            {
+                Text = entry.DetailText,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x7F, 0x8A, 0x9A)),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 2, 0, 0),
+            };
+
+            var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            textStack.Children.Add(nameBlock);
+            textStack.Children.Add(pathBlock);
+
+            var sourceBadge = new Border
+            {
+                Margin = new Thickness(10, 0, 0, 0),
+                Padding = new Thickness(7, 2, 7, 2),
+                VerticalAlignment = VerticalAlignment.Top,
+                Background = new SolidColorBrush(Color.FromRgb(0xEE, 0xF2, 0xF7)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xDA, 0xE2, 0xEB)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Child = new TextBlock
+                {
+                    Text = entry.SourceLabel,
+                    FontSize = 10,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x73, 0x81, 0x96)),
+                },
+            };
+
+            var itemGrid = new Grid();
+            itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            itemGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(iconBorder, 0);
+            Grid.SetColumn(textStack, 1);
+            Grid.SetColumn(sourceBadge, 2);
+            itemGrid.Children.Add(iconBorder);
+            itemGrid.Children.Add(textStack);
+            itemGrid.Children.Add(sourceBadge);
+
+            var listItem = new ListBoxItem
+            {
+                Content = itemGrid,
+                Tag = entry.FullPath,
+                Style = (Style)FindResource("QuickOpenResultItemStyle"),
+            };
+            SkillsList.Items.Add(listItem);
+        }
+    }
+
     private async void OnRecentFileItemClicked(object sender, MouseButtonEventArgs e)
     {
         if (RecentFilesList.SelectedItem is not ListBoxItem selectedItem)
@@ -1199,6 +1328,209 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         RecentFilesPopup.IsOpen = false;
         await LoadDocumentAsync(filePath, createIfMissing: false);
+    }
+
+    private async void OnSkillItemClicked(object sender, MouseButtonEventArgs e)
+    {
+        if (SkillsList.SelectedItem is not ListBoxItem selectedItem)
+            return;
+
+        if (selectedItem.Tag is not string filePath)
+            return;
+
+        SkillsPopup.IsOpen = false;
+        await LoadDocumentAsync(filePath, createIfMissing: false);
+    }
+
+    private List<SkillDocumentEntry> LoadSkillDocumentEntries()
+    {
+        var searchBaseDirectory = ResolveSkillSearchBaseDirectory();
+        if (string.IsNullOrWhiteSpace(searchBaseDirectory))
+        {
+            return [];
+        }
+
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entries = new List<SkillDocumentEntry>();
+
+        foreach (var source in SkillSources)
+        {
+            var skillsRoot = Path.Combine(searchBaseDirectory, source.DirectoryName, "skills");
+            if (!Directory.Exists(skillsRoot))
+            {
+                continue;
+            }
+
+            IEnumerable<string> directories;
+            try
+            {
+                directories = Directory.EnumerateDirectories(skillsRoot)
+                    .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var skillDirectory in directories)
+            {
+                var skillFilePath = Path.Combine(skillDirectory, "SKILL.md");
+                if (!File.Exists(skillFilePath))
+                {
+                    continue;
+                }
+
+                var fullPath = Path.GetFullPath(skillFilePath);
+                if (!seenPaths.Add(fullPath))
+                {
+                    continue;
+                }
+
+                entries.Add(new SkillDocumentEntry
+                {
+                    FullPath = fullPath,
+                    DisplayName = ReadSkillDisplayName(fullPath),
+                    SourceLabel = source.Label,
+                    DetailText = Path.GetRelativePath(searchBaseDirectory, fullPath).Replace('\\', '/'),
+                });
+            }
+        }
+
+        return entries;
+    }
+
+    private string ResolveSkillSearchBaseDirectory()
+    {
+        foreach (var candidate in EnumerateSkillSearchCandidates())
+        {
+            foreach (var directory in EnumerateAncestorDirectories(candidate))
+            {
+                if (HasSkillDirectory(directory))
+                {
+                    return directory;
+                }
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private IEnumerable<string> EnumerateSkillSearchCandidates()
+    {
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var candidates = new[]
+        {
+            _workspaceRoot,
+            Path.GetDirectoryName(_currentFilePath) ?? string.Empty,
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory,
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                continue;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(candidate);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (seenPaths.Add(fullPath))
+            {
+                yield return fullPath;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateAncestorDirectories(string startDirectory)
+    {
+        var current = Path.GetFullPath(startDirectory);
+        while (!string.IsNullOrWhiteSpace(current))
+        {
+            yield return current;
+
+            var parent = Directory.GetParent(current);
+            if (parent is null)
+            {
+                yield break;
+            }
+
+            current = parent.FullName;
+        }
+    }
+
+    private static bool HasSkillDirectory(string baseDirectory)
+    {
+        foreach (var source in SkillSources)
+        {
+            if (Directory.Exists(Path.Combine(baseDirectory, source.DirectoryName, "skills")))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string ReadSkillDisplayName(string skillFilePath)
+    {
+        var fallback = Path.GetFileName(Path.GetDirectoryName(skillFilePath) ?? skillFilePath);
+
+        try
+        {
+            var lines = File.ReadLines(skillFilePath).Take(120).ToList();
+            if (lines.Count == 0)
+            {
+                return fallback;
+            }
+
+            if (lines[0].Trim().Equals("---", StringComparison.Ordinal))
+            {
+                for (var i = 1; i < lines.Count; i++)
+                {
+                    var line = lines[i];
+                    if (line.Trim().Equals("---", StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    var match = SkillFrontMatterNameRegex.Match(line);
+                    if (match.Success)
+                    {
+                        return NormalizeSkillDisplayName(match.Groups[1].Value, fallback);
+                    }
+                }
+            }
+
+            foreach (var line in lines)
+            {
+                var match = MarkdownHeadingRegex.Match(line);
+                if (match.Success)
+                {
+                    return NormalizeSkillDisplayName(match.Groups[1].Value, fallback);
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to the skill folder name when the markdown file cannot be parsed.
+        }
+
+        return fallback;
+    }
+
+    private static string NormalizeSkillDisplayName(string rawValue, string fallback)
+    {
+        var value = rawValue.Trim().Trim('"', '\'');
+        return string.IsNullOrWhiteSpace(value) ? fallback : value;
     }
 
     private async void OnSaveNowClicked(object sender, RoutedEventArgs e)
