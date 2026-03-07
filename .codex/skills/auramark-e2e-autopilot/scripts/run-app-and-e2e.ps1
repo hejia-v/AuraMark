@@ -256,7 +256,7 @@ Initial content before external update.
     @"
 # Readonly Case
 
-This file is readonly. E2E should show soft save error and retry.
+This file is readonly. E2E should click Save and show a soft save error plus retry.
 "@ | Set-Content -Path $readonlyPath -Encoding UTF8
     (Get-Item -LiteralPath $readonlyPath).IsReadOnly = $true
 
@@ -319,13 +319,12 @@ function Start-AuraMarkSession {
     }
 
     if (-not $SkipUiChecks) {
-        $names = @("New", "Open", "Save", "Export")
-        foreach ($n in $names) {
-            Assert-UiElementPresent -Root $root -Name $n
-            $result.ui_checks += [ordered]@{ case = $CaseId; name = $n; ok = $true }
-        }
-
-        $ids = @("WindowMinimizeButton", "WindowCloseButton")
+        $ids = @(
+            "QuickOpenButton",
+            "SaveFileButton",
+            "WindowMinimizeButton",
+            "WindowCloseButton"
+        )
         foreach ($id in $ids) {
             Assert-UiElementPresent -Root $root -AutomationId $id
             $result.ui_checks += [ordered]@{ case = $CaseId; name = $id; ok = $true }
@@ -436,7 +435,7 @@ try {
     $fixtures = New-E2eFixtures -Root $fixtureRoot
 
     if (-not $SkipLaunch) {
-        Write-Section "Case1: New -> autosave"
+        Write-Section "Case1: New -> save"
         $session = Start-AuraMarkSession -LaunchArguments @("--e2e") -SkipUiChecks:$shouldSkipUiChecks -CaseId "case1"
         try {
             $result.launched = $true
@@ -445,8 +444,11 @@ try {
                 Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "app_ready" -Seq 1
                 Start-Sleep -Milliseconds 300
                 Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "after_typing" -Seq 2
-                Start-Sleep -Milliseconds 900
-                Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "after_autosave" -Seq 3
+            }
+            Invoke-ButtonByAutomationId -Root $session.root -AutomationId "SaveFileButton"
+            Start-Sleep -Milliseconds 500
+            if (-not $shouldSkipScreenshots) {
+                Add-Checkpoint -Handle $session.handle -CaseId "case1" -Checkpoint "after_save" -Seq 3
             }
         }
         finally {
@@ -505,10 +507,12 @@ Updated by run-app-and-e2e at $(Get-Date -Format "s").
             Write-Section "Case5: Save error + retry"
             $session = Start-AuraMarkSession -LaunchArguments @("--e2e", "--e2e-open", $fixtures.readonly) -SkipUiChecks:$true -CaseId "case5"
             try {
-                Start-Sleep -Milliseconds 2000
-                if (-not $shouldSkipScreenshots) {
-                    Add-Checkpoint -Handle $session.handle -CaseId "case5" -Checkpoint "save_error_toast_shown" -Seq 1
-                }
+                Start-Sleep -Milliseconds 400
+                Invoke-ButtonByAutomationId -Root $session.root -AutomationId "SaveFileButton"
+            Start-Sleep -Milliseconds 1200
+            if (-not $shouldSkipScreenshots) {
+                Add-Checkpoint -Handle $session.handle -CaseId "case5" -Checkpoint "save_error_toast_shown" -Seq 1
+            }
                 if (-not $shouldSkipUiChecks) {
                     try {
                         Invoke-ButtonByAutomationId -Root $session.root -AutomationId "RetrySaveButton"
@@ -521,6 +525,24 @@ Updated by run-app-and-e2e at $(Get-Date -Format "s").
                 Start-Sleep -Milliseconds 500
                 if (-not $shouldSkipScreenshots) {
                     Add-Checkpoint -Handle $session.handle -CaseId "case5" -Checkpoint "save_error_retry_clicked" -Seq 2
+                }
+            }
+            finally {
+                Stop-AuraMarkSession -Session $session
+            }
+
+            Write-Section "Case6: Close with unsaved changes"
+            $session = Start-AuraMarkSession -LaunchArguments @("--e2e") -SkipUiChecks:$true -CaseId "case6"
+            try {
+                Start-Sleep -Milliseconds 400
+                Invoke-ButtonByAutomationId -Root $session.root -AutomationId "WindowCloseButton"
+                $promptHandle = Wait-ForWindowHandle -Title "Unsaved changes" -TimeoutSeconds 6 -TargetProcessId $session.process.Id
+                if ($promptHandle -eq [IntPtr]::Zero) {
+                    throw "Unsaved changes dialog not shown when closing dirty document."
+                }
+                $result.ui_checks += [ordered]@{ case = "case6"; name = "UnsavedChangesDialog"; ok = $true }
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $promptHandle -CaseId "case6" -Checkpoint "unsaved_changes_prompt" -Seq 1
                 }
             }
             finally {

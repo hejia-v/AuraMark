@@ -54,7 +54,7 @@
 - Case1 新建/输入/自动保存/重启
   - `app_ready`（启动后可编辑状态）
   - `after_typing`（输入后 1-2 秒，保存点亮/状态变化）
-  - `after_autosave`（idle > 500ms，保存完成）
+- `after_save`（手动触发 Save 后，保存完成）
   - `after_restart_restored`（重启后内容恢复）
 
 - Case2 大文件加载
@@ -86,7 +86,7 @@
 ### State 规则
 
 - `S001 Loading Visible`: 大文件加载时必须出现 loading overlay，且文案与进度条可见。
-- `S002 Saved Feedback`: autosave 后应出现“保存完成/状态变更”的可见反馈（状态栏或 saving dot）。
+- `S002 Saved Feedback`: 手动保存后应出现“保存完成/状态变更”的可见反馈（状态栏或 saving dot）。
 - `S003 Error Feedback`: 保存失败必须出现软错误提示且不冻结输入；Retry 可用。
 - `S004 Immersive Toggle`: 进入/退出沉浸模式的 UI 状态切换可见且不闪烁。
 

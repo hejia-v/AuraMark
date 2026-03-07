@@ -31,11 +31,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\acceptance.ps1 -Configuration
 
 ## PRD 6.3 Mapping
 
-- Case 1: New -> type -> autosave -> restart
+- Case 1: New -> type -> save -> restart
 - Case 2: 5MB+ file loading and responsiveness
 - Case 3: Immersive enter/exit interaction
 - Case 4: External file change hot reload
 - Case 5: Save failure soft hint + retry
+- Case 6: Close app with unsaved changes prompts for save/discard/cancel
 
 ## Cleanup
 

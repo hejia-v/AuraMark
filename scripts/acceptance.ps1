@@ -151,8 +151,8 @@ $readonlyPath = Join-Path $fixtureRoot "readonly.md"
 @"
 # Readonly Case
 
-Try editing this file and trigger autosave.
-Expected: soft save error + retry hint, editor should not freeze.
+Try editing this file and click Save.
+Expected: click Save after editing. A soft save error + retry hint should appear, and editing should remain available.
 "@ | Set-Content -Path $readonlyPath -Encoding UTF8
 (Get-Item -LiteralPath $readonlyPath).IsReadOnly = $true
 
@@ -178,11 +178,12 @@ Build configuration: $Configuration
 
 | Case | Steps | Expected | Result |
 |---|---|---|---|
-| 1. New -> type -> autosave -> restart | Open app; Ctrl+N; type text; idle > 500ms; close and reopen app | Saving dot disappears; content is restored | [ ] Pass / [ ] Fail |
+| 1. New -> type -> save -> restart | Open app; Ctrl+N; type text; press Ctrl+S; close and reopen app | Saving dot disappears; content is restored | [ ] Pass / [ ] Fail |
 | 2. 5MB+ file loading | Ctrl+O and open large-6mb.md | Loading overlay appears; UI remains responsive; file renders | [ ] Pass / [ ] Fail |
 | 3. Immersive mode | Keep typing for >=3s; then move mouse across a large distance | Top bar/sidebar auto hide then wake up | [ ] Pass / [ ] Fail |
 | 4. External hot reload | Open any .md in fixture; edit same file externally and save | Editor content updates automatically | [ ] Pass / [ ] Fail |
-| 5. Save failure hint | Open readonly.md; type and wait autosave | Soft error appears with retry hint; editing remains available | [ ] Pass / [ ] Fail |
+| 5. Save failure hint | Open readonly.md; type and press Ctrl+S | Soft error appears with retry hint; editing remains available | [ ] Pass / [ ] Fail |
+| 6. Close with unsaved changes | Open any editable file; type without saving; close app | A prompt offers Save / Discard / Cancel, and Cancel keeps the app open | [ ] Pass / [ ] Fail |
 
 ## Notes
 - Remember to clear readonly flag after test:

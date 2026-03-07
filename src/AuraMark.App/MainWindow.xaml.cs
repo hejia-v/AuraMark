@@ -42,7 +42,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private const string VirtualHostName = "app.auramark.local";
     private const long LargeFileThresholdBytes = 5 * 1024 * 1024;
-    private const int AutosaveDelayMilliseconds = 500;
     private const int ImmersiveTypingThresholdMilliseconds = 3000;
     private const int UiAnimationMilliseconds = 150;
     private const int E2eLargeFileDelayMilliseconds = 500;
@@ -89,7 +88,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         [".bmp"] = "image/bmp",
     };
 
-    private readonly DispatcherTimer _autosaveTimer;
     private readonly DispatcherTimer _externalReloadTimer;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ObservableCollection<FileTreeNode> _fileTreeNodes = [];
@@ -125,6 +123,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _externalReloadPending;
     private bool _hasExternalConflict;
     private bool _inputFrozen;
+    private bool _allowWindowClose;
+    private bool _isCloseConfirmationInProgress;
     private bool _isDraggingSidebar;
     private double _sidebarDragStartWindowX;
     private double _sidebarDragStartWidth;
@@ -159,9 +159,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         Title = "AuraMark";
         DataContext = this;
-
-        _autosaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(AutosaveDelayMilliseconds) };
-        _autosaveTimer.Tick += OnAutosaveTimerTick;
 
         _externalReloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _externalReloadTimer.Tick += OnExternalReloadTimerTick;
@@ -761,12 +758,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private async void OnAutosaveTimerTick(object? sender, EventArgs e)
-    {
-        _autosaveTimer.Stop();
-        await SavePendingChangesAsync(force: false);
-    }
-
     private async void OnExternalReloadTimerTick(object? sender, EventArgs e)
     {
         _externalReloadTimer.Stop();
@@ -779,12 +770,47 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         await ReloadFromDiskAfterExternalChangeAsync();
     }
 
-    private void OnClosing(object? sender, CancelEventArgs e)
+    private async void OnClosing(object? sender, CancelEventArgs e)
     {
-        _autosaveTimer.Stop();
-        _externalReloadTimer.Stop();
-        _fileWatcher?.Dispose();
-        _fileWatcher = null;
+        if (_allowWindowClose)
+        {
+            CleanupBeforeClose();
+            return;
+        }
+
+        if (_isCloseConfirmationInProgress)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        if (!_dirty && !_isSaving)
+        {
+            CleanupBeforeClose();
+            return;
+        }
+
+        e.Cancel = true;
+        _isCloseConfirmationInProgress = true;
+
+        try
+        {
+            var canClose = await EnsurePendingChangesHandledAsync(
+                promptMessage: "Current document has unsaved changes.\n\nYes: save changes\nNo: discard changes\nCancel: keep the app open",
+                cancelledHint: "Close cancelled",
+                saveFailureMessage: "Save failed. Resolve the error before closing.");
+            if (!canClose)
+            {
+                return;
+            }
+
+            _allowWindowClose = true;
+            Close();
+        }
+        finally
+        {
+            _isCloseConfirmationInProgress = false;
+        }
     }
 
     private async Task OpenWithDialogAsync()
@@ -1314,33 +1340,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return true;
         }
 
-        _autosaveTimer.Stop();
-
-        if (_isSaving)
-        {
-            ShowLoading(true, "Finishing save...");
-            while (_isSaving)
-            {
-                await Task.Delay(25);
-            }
-        }
-
-        if (!_dirty)
-        {
-            return true;
-        }
-
-        ShowLoading(true, "Saving current document...");
-        await SavePendingChangesAsync(force: true);
-        if (!_dirty)
-        {
-            return true;
-        }
-
-        ShowSoftError("Save current document before switching files.");
-        ShowLoading(false);
-        SetState(EditorState.Dirty, "Switch cancelled");
-        return false;
+        return await EnsurePendingChangesHandledAsync(
+            promptMessage: "Current document has unsaved changes.\n\nYes: save changes\nNo: discard changes\nCancel: stay on the current file",
+            cancelledHint: "Switch cancelled",
+            saveFailureMessage: "Save failed. Resolve the error before switching files.");
     }
 
     private async Task LoadDocumentAsync(string path, bool createIfMissing)
@@ -1608,9 +1611,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetState(EditorState.Dirty);
         SetSavingDot(true);
         HideError();
-
-        _autosaveTimer.Stop();
-        _autosaveTimer.Start();
         TrackTyping();
     }
 
@@ -1752,6 +1752,58 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _isSaving = false;
         }
+    }
+
+    private async Task<bool> EnsurePendingChangesHandledAsync(
+        string promptMessage,
+        string cancelledHint,
+        string saveFailureMessage)
+    {
+        if (_isSaving)
+        {
+            ShowLoading(true, "Finishing save...");
+            while (_isSaving)
+            {
+                await Task.Delay(25);
+            }
+        }
+
+        if (!_dirty)
+        {
+            ShowLoading(false);
+            return true;
+        }
+
+        var result = System.Windows.MessageBox.Show(
+            this,
+            promptMessage,
+            "Unsaved changes",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Yes);
+
+        if (result == MessageBoxResult.No)
+        {
+            ShowLoading(false);
+            return true;
+        }
+
+        if (result == MessageBoxResult.Yes)
+        {
+            ShowLoading(true, "Saving current document...");
+            await SavePendingChangesAsync(force: true);
+            if (!_dirty)
+            {
+                ShowLoading(false);
+                return true;
+            }
+
+            ShowSoftError(saveFailureMessage);
+        }
+
+        ShowLoading(false);
+        SetState(EditorState.Dirty, cancelledHint);
+        return false;
     }
 
     private async Task ReloadFromDiskAfterExternalChangeAsync()
@@ -2601,6 +2653,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void HideSyncConflict()
     {
         FadeElement(SyncConflictToast, visible: false);
+    }
+
+    private void CleanupBeforeClose()
+    {
+        _externalReloadTimer.Stop();
+        _fileWatcher?.Dispose();
+        _fileWatcher = null;
     }
 
     private void SetState(EditorState state, string? hint = null)
