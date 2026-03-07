@@ -261,6 +261,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "Workspace") => "工作区",
             (AppLanguage.Chinese, "TooltipBack") => "后退",
             (AppLanguage.Chinese, "TooltipForward") => "前进",
+            (AppLanguage.Chinese, "LocateCurrentFileTooltip") => "在文件树中定位当前文件",
             (AppLanguage.Chinese, "SkillsButtonTooltip") => "技能",
             (AppLanguage.Chinese, "WorkspaceAgentsTooltip") => "打开 AGENTS.md",
             (AppLanguage.Chinese, "WorkspaceClaudeTooltip") => "打开 CLAUDE.md",
@@ -336,6 +337,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "Workspace") => "WORKSPACE",
             (AppLanguage.English, "TooltipBack") => "Back",
             (AppLanguage.English, "TooltipForward") => "Forward",
+            (AppLanguage.English, "LocateCurrentFileTooltip") => "Locate current file in tree",
             (AppLanguage.English, "SkillsButtonTooltip") => "Skills",
             (AppLanguage.English, "WorkspaceAgentsTooltip") => "Open AGENTS.md",
             (AppLanguage.English, "WorkspaceClaudeTooltip") => "Open CLAUDE.md",
@@ -420,6 +422,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SettingsDialogApplyButton.Content = Text("DialogApply");
         OpenHistoryBackButton.ToolTip = Text("TooltipBack");
         OpenHistoryForwardButton.ToolTip = Text("TooltipForward");
+        LocateCurrentFileButton.ToolTip = Text("LocateCurrentFileTooltip");
         SkillsButton.ToolTip = Text("SkillsButtonTooltip");
         WorkspaceAgentsButton.ToolTip = Text("WorkspaceAgentsTooltip");
         WorkspaceClaudeButton.ToolTip = Text("WorkspaceClaudeTooltip");
@@ -3286,6 +3289,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return found;
     }
 
+    private static FileTreeNode? FindNodeByPath(IEnumerable<FileTreeNode> nodes, string fullPath)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.FullPath.Equals(fullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return node;
+            }
+
+            if (!node.IsDirectory)
+            {
+                continue;
+            }
+
+            var descendant = FindNodeByPath(node.Children, fullPath);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
+    }
+
     private static readonly HashSet<string> SkillsParentNames =
         new(StringComparer.OrdinalIgnoreCase) { ".agents", ".codex", ".claude" };
 
@@ -3393,6 +3420,71 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ShowLoading(false);
             SetState(EditorState.Idle);
         }
+    }
+
+    private async void OnLocateCurrentFileButtonClicked(object sender, RoutedEventArgs e)
+    {
+        await RevealCurrentFileInTreeAsync();
+    }
+
+    private async Task RevealCurrentFileInTreeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_currentFilePath) || !File.Exists(_currentFilePath))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+        {
+            return;
+        }
+
+        var waitedForSidebar = false;
+        if (_isImmersive)
+        {
+            ExitImmersiveMode();
+            waitedForSidebar = true;
+        }
+
+        if (!_isSidebarVisible)
+        {
+            _isSidebarVisible = true;
+            ApplySidebarVisualState(true);
+            waitedForSidebar = true;
+        }
+
+        RefreshFileTree();
+
+        var node = FindNodeByPath(_fileTreeNodes, _currentFilePath);
+        if (node is null)
+        {
+            return;
+        }
+
+        node.IsSelected = true;
+
+        if (waitedForSidebar)
+        {
+            await Task.Delay(UiAnimationMilliseconds);
+        }
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            FileTreeView.UpdateLayout();
+
+            var item = FindTreeViewItem(FileTreeView, node);
+            if (item is null)
+            {
+                FileTreeView.Focus();
+                return;
+            }
+
+            item.IsSelected = true;
+            item.BringIntoView();
+            FileTreeView.Focus();
+            item.Focus();
+            Keyboard.Focus(item);
+        }, DispatcherPriority.Background);
     }
 
     private void OnOutlineSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -4156,6 +4248,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var found = FindDescendant(child, predicate);
             if (found != null) return found;
         }
+        return null;
+    }
+
+    private static TreeViewItem? FindTreeViewItem(ItemsControl parent, FileTreeNode target)
+    {
+        if (parent.ItemContainerGenerator.ContainerFromItem(target) is TreeViewItem directItem)
+        {
+            return directItem;
+        }
+
+        foreach (var item in parent.Items)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromItem(item) is not TreeViewItem childContainer)
+            {
+                continue;
+            }
+
+            childContainer.UpdateLayout();
+            var descendant = FindTreeViewItem(childContainer, target);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
         return null;
     }
 
