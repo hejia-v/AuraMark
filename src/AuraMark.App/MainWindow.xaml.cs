@@ -139,6 +139,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int _documentLoadVersion;
     private bool _isDocumentRendering;
     private int? _pendingOutlineScrollIndex;
+    private int _activeHeadingIndex = -1;
     private int _quickOpenLoadVersion;
     private bool _isQuickOpenLoading;
 
@@ -887,7 +888,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _isQuickOpenLoading = true;
-        QuickOpenLoadingText.Text = "Loading workspace files...";
+        QuickOpenLoadingText.Text = "正在索引工作区...";
         UpdateQuickOpenHelperText();
         UpdateQuickOpenVisualState();
 
@@ -1591,6 +1592,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ToggleSidebar();
         }
+        else if (command.Name.Equals(IpcCommands.ActiveHeadingChanged, StringComparison.Ordinal))
+        {
+            SetActiveHeadingIndex(command.Index ?? -1);
+        }
     }
 
     private void TrackTyping()
@@ -1993,6 +1998,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutlineItems)));
+        SetActiveHeadingIndex(-1);
+    }
+
+    private void SetActiveHeadingIndex(int index)
+    {
+        _activeHeadingIndex = index;
+        for (var i = 0; i < _outlineItems.Count; i++)
+        {
+            _outlineItems[i].IsActive = i == index;
+        }
+
+        if (index >= 0 && index < _outlineItems.Count)
+        {
+            OutlineList.ScrollIntoView(_outlineItems[index]);
+        }
     }
 
     private void RefreshFileTree()

@@ -572,34 +572,41 @@
 
         <Style x:Key="QuickOpenScrollThumbStyle" TargetType="Thumb">
             <Setter Property="OverridesDefaultStyle" Value="True" />
-            <Setter Property="MinHeight" Value="34" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Thumb">
                         <Grid Width="8">
                             <Border x:Name="ThumbBody"
-                                    Margin="0,2"
-                                    Background="#A7B6C7"
-                                    BorderBrush="#F7FAFD"
-                                    BorderThickness="1"
                                     CornerRadius="4">
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="8"
-                                                      ShadowDepth="0"
-                                                      Opacity="0.10"
-                                                      Color="#1E293B" />
-                                </Border.Effect>
+                                <Border.Background>
+                                    <SolidColorBrush x:Name="ThumbBrush" Color="#BCC9D6" />
+                                </Border.Background>
                             </Border>
                         </Grid>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ThumbBody" Property="Background" Value="#90A3B8" />
-                                <Setter TargetName="ThumbBody" Property="BorderBrush" Value="#FCFDFE" />
-                            </Trigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseEnter">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ColorAnimation Storyboard.TargetName="ThumbBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#9AADBF"
+                                                        Duration="0:0:0.15" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <ColorAnimation Storyboard.TargetName="ThumbBrush"
+                                                        Storyboard.TargetProperty="Color"
+                                                        To="#BCC9D6"
+                                                        Duration="0:0:0.25" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
                             <Trigger Property="IsDragging" Value="True">
-                                <Setter TargetName="ThumbBody" Property="Background" Value="#7A90A8" />
-                                <Setter TargetName="ThumbBody" Property="BorderBrush" Value="#FFFFFF" />
+                                <Setter TargetName="ThumbBody" Property="Background" Value="#829BAF" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -618,12 +625,13 @@
                             <Border x:Name="TrackRail"
                                     Width="8"
                                     HorizontalAlignment="Center"
-                                    Margin="0,2"
-                                    Background="#EEF3F7"
+                                    Margin="0,4"
+                                    Background="#E2EAF2"
                                     CornerRadius="4"
-                                    Opacity="0.9" />
+                                    Opacity="0.6" />
                             <Track x:Name="PART_Track"
-                                   IsDirectionReversed="True">
+                                   IsDirectionReversed="True"
+                                   Margin="0,4">
                                 <Track.DecreaseRepeatButton>
                                     <RepeatButton Command="ScrollBar.PageUpCommand"
                                                   Opacity="0"
@@ -640,9 +648,26 @@
                             </Track>
                         </Grid>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="TrackRail" Property="Background" Value="#E5ECF3" />
-                            </Trigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseEnter">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TrackRail"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1.0"
+                                                         Duration="0:0:0.15" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                            <EventTrigger RoutedEvent="Mouse.MouseLeave">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="TrackRail"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0.6"
+                                                         Duration="0:0:0.25" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -1230,24 +1255,123 @@
 
                                             <Border x:Name="QuickOpenLoadingOverlay"
                                                     Grid.RowSpan="2"
-                                                    Background="#F9FBFDE6"
+                                                    Background="#F5F8FBF2"
                                                     CornerRadius="10"
                                                     Visibility="Collapsed">
                                                 <StackPanel HorizontalAlignment="Center"
                                                             VerticalAlignment="Center">
-                                                    <ProgressBar x:Name="QuickOpenLoadingProgress"
-                                                                 Width="132"
-                                                                 Height="3"
-                                                                 Margin="0,0,0,10"
-                                                                 Foreground="#7890AA"
-                                                                 Background="#DFE8F1"
-                                                                 IsIndeterminate="True" />
+                                                    <StackPanel Orientation="Horizontal"
+                                                                HorizontalAlignment="Center"
+                                                                Margin="0,0,0,8">
+                                                        <StackPanel.Triggers>
+                                                            <EventTrigger RoutedEvent="StackPanel.Loaded">
+                                                                <BeginStoryboard>
+                                                                    <Storyboard RepeatBehavior="Forever">
+                                                                        <!-- Dot1: peak at t=0.15s -->
+                                                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Dot1"
+                                                                                                      Storyboard.TargetProperty="Opacity"
+                                                                                                      Duration="0:0:1.2">
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.15" Value="1.0" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.30" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="0.25" />
+                                                                        </DoubleAnimationUsingKeyFrames>
+                                                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Dot1Transform"
+                                                                                                      Storyboard.TargetProperty="Y"
+                                                                                                      Duration="0:0:1.2">
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0" />
+                                                                            <EasingDoubleKeyFrame KeyTime="0:0:0.15" Value="-4">
+                                                                                <EasingDoubleKeyFrame.EasingFunction>
+                                                                                    <SineEase EasingMode="EaseOut" />
+                                                                                </EasingDoubleKeyFrame.EasingFunction>
+                                                                            </EasingDoubleKeyFrame>
+                                                                            <EasingDoubleKeyFrame KeyTime="0:0:0.30" Value="0">
+                                                                                <EasingDoubleKeyFrame.EasingFunction>
+                                                                                    <SineEase EasingMode="EaseIn" />
+                                                                                </EasingDoubleKeyFrame.EasingFunction>
+                                                                            </EasingDoubleKeyFrame>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="0" />
+                                                                        </DoubleAnimationUsingKeyFrames>
+                                                                        <!-- Dot2: peak at t=0.45s -->
+                                                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Dot2"
+                                                                                                      Storyboard.TargetProperty="Opacity"
+                                                                                                      Duration="0:0:1.2">
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.30" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.45" Value="1.0" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.60" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="0.25" />
+                                                                        </DoubleAnimationUsingKeyFrames>
+                                                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Dot2Transform"
+                                                                                                      Storyboard.TargetProperty="Y"
+                                                                                                      Duration="0:0:1.2">
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.30" Value="0" />
+                                                                            <EasingDoubleKeyFrame KeyTime="0:0:0.45" Value="-4">
+                                                                                <EasingDoubleKeyFrame.EasingFunction>
+                                                                                    <SineEase EasingMode="EaseOut" />
+                                                                                </EasingDoubleKeyFrame.EasingFunction>
+                                                                            </EasingDoubleKeyFrame>
+                                                                            <EasingDoubleKeyFrame KeyTime="0:0:0.60" Value="0">
+                                                                                <EasingDoubleKeyFrame.EasingFunction>
+                                                                                    <SineEase EasingMode="EaseIn" />
+                                                                                </EasingDoubleKeyFrame.EasingFunction>
+                                                                            </EasingDoubleKeyFrame>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="0" />
+                                                                        </DoubleAnimationUsingKeyFrames>
+                                                                        <!-- Dot3: peak at t=0.75s -->
+                                                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Dot3"
+                                                                                                      Storyboard.TargetProperty="Opacity"
+                                                                                                      Duration="0:0:1.2">
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.60" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.75" Value="1.0" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.90" Value="0.25" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="0.25" />
+                                                                        </DoubleAnimationUsingKeyFrames>
+                                                                        <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Dot3Transform"
+                                                                                                      Storyboard.TargetProperty="Y"
+                                                                                                      Duration="0:0:1.2">
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0" Value="0" />
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:0.60" Value="0" />
+                                                                            <EasingDoubleKeyFrame KeyTime="0:0:0.75" Value="-4">
+                                                                                <EasingDoubleKeyFrame.EasingFunction>
+                                                                                    <SineEase EasingMode="EaseOut" />
+                                                                                </EasingDoubleKeyFrame.EasingFunction>
+                                                                            </EasingDoubleKeyFrame>
+                                                                            <EasingDoubleKeyFrame KeyTime="0:0:0.90" Value="0">
+                                                                                <EasingDoubleKeyFrame.EasingFunction>
+                                                                                    <SineEase EasingMode="EaseIn" />
+                                                                                </EasingDoubleKeyFrame.EasingFunction>
+                                                                            </EasingDoubleKeyFrame>
+                                                                            <LinearDoubleKeyFrame KeyTime="0:0:1.2" Value="0" />
+                                                                        </DoubleAnimationUsingKeyFrames>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </EventTrigger>
+                                                        </StackPanel.Triggers>
+                                                        <Ellipse x:Name="Dot1" Width="8" Height="8" Fill="#7890AA" Margin="5,0" Opacity="0.25">
+                                                            <Ellipse.RenderTransform>
+                                                                <TranslateTransform x:Name="Dot1Transform" />
+                                                            </Ellipse.RenderTransform>
+                                                        </Ellipse>
+                                                        <Ellipse x:Name="Dot2" Width="8" Height="8" Fill="#7890AA" Margin="5,0" Opacity="0.25">
+                                                            <Ellipse.RenderTransform>
+                                                                <TranslateTransform x:Name="Dot2Transform" />
+                                                            </Ellipse.RenderTransform>
+                                                        </Ellipse>
+                                                        <Ellipse x:Name="Dot3" Width="8" Height="8" Fill="#7890AA" Margin="5,0" Opacity="0.25">
+                                                            <Ellipse.RenderTransform>
+                                                                <TranslateTransform x:Name="Dot3Transform" />
+                                                            </Ellipse.RenderTransform>
+                                                        </Ellipse>
+                                                    </StackPanel>
                                                     <TextBlock x:Name="QuickOpenLoadingText"
                                                                HorizontalAlignment="Center"
                                                                FontSize="12"
                                                                FontWeight="SemiBold"
                                                                Foreground="#607286"
-                                                               Text="Loading files..." />
+                                                               Text="正在索引工作区..." />
                                                 </StackPanel>
                                             </Border>
                                         </Grid>
@@ -1576,11 +1700,17 @@
                                         <ControlTemplate TargetType="ListBoxItem">
                                             <Border x:Name="Bd"
                                                     Background="{TemplateBinding Background}"
+                                                    BorderThickness="3,0,0,0"
+                                                    BorderBrush="Transparent"
                                                     Padding="{TemplateBinding Padding}"
                                                     CornerRadius="4">
                                                 <ContentPresenter />
                                             </Border>
                                             <ControlTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#81A1C1" />
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E0EBF5" />
+                                                </DataTrigger>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="Bd" Property="Background" Value="#E8ECF2" />
                                                 </Trigger>
@@ -1641,6 +1771,10 @@
                                         <Setter TargetName="HeadingText" Property="FontSize" Value="11" />
                                         <Setter TargetName="HeadingText" Property="FontWeight" Value="Normal" />
                                         <Setter TargetName="HeadingText" Property="Foreground" Value="#8090A0" />
+                                    </DataTrigger>
+                                    <!-- IsActive: deepen text color for all levels -->
+                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                        <Setter TargetName="HeadingText" Property="Foreground" Value="#2E3440" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>

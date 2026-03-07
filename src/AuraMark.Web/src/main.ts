@@ -55,6 +55,10 @@ let currentMarkdown = '';
 let savedMarkdown = '';
 let applySequence = 0;
 let renderQueue: Promise<void> = Promise.resolve();
+let lastReportedActiveIndex = -1;
+let activeHeadingRafId = 0;
+let clickFloorIndex = -1;
+let prevScrollTop = 0;
 
 window.addEventListener('error', (event) => {
   sendToHost({
@@ -148,6 +152,8 @@ const renderEditor = async (markdown: string, sequence: number) => {
         sendUpdate(markdownText);
         updateDirtyDot();
       });
+
+      reportActiveHeading(computeActiveHeading());
     });
 
   await renderQueue;
@@ -159,6 +165,7 @@ const setSourceMode = (enabled: boolean) => {
   if (sourceMode) {
     sourceEditor.value = currentMarkdown;
     sourceEditor.focus();
+    reportActiveHeading(-1);
   } else {
     void applyRemoteMarkdown(sourceEditor.value, true);
   }
@@ -172,6 +179,8 @@ const setInputFrozen = (frozen: boolean) => {
 
 const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) => {
   const sequence = ++applySequence;
+  lastReportedActiveIndex = -1;
+  clickFloorIndex = -1;
   suppressOutbound = true;
   try {
     currentMarkdown = markdown;
@@ -234,6 +243,70 @@ const scrollToHeading = (index: number | undefined) => {
 
   target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
+
+const computeActiveHeadingAtY = (y: number): number => {
+  const headings = milkRoot.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  if (headings.length === 0) {
+    return -1;
+  }
+
+  let activeIndex = -1;
+  for (let i = 0; i < headings.length; i++) {
+    const el = headings[i] as HTMLElement;
+    if (el.offsetTop <= y) {
+      activeIndex = i;
+    } else {
+      break;
+    }
+  }
+  return activeIndex;
+};
+
+const computeActiveHeading = (): number => {
+  return computeActiveHeadingAtY(milkRoot.scrollTop + 10);
+};
+
+const reportActiveHeading = (index: number) => {
+  if (index === lastReportedActiveIndex) {
+    return;
+  }
+  lastReportedActiveIndex = index;
+  sendToHost({
+    type: 'Command',
+    content: JSON.stringify({ name: 'ActiveHeadingChanged', index }),
+    timestamp: Date.now(),
+  });
+};
+
+milkRoot.addEventListener('scroll', () => {
+  if (activeHeadingRafId) {
+    return;
+  }
+  activeHeadingRafId = requestAnimationFrame(() => {
+    activeHeadingRafId = 0;
+    const currentScrollTop = milkRoot.scrollTop;
+    const scrollingDown = currentScrollTop >= prevScrollTop;
+    prevScrollTop = currentScrollTop;
+
+    const scrollIndex = computeActiveHeading();
+
+    if (clickFloorIndex >= 0) {
+      if (!scrollingDown || scrollIndex >= clickFloorIndex) {
+        clickFloorIndex = -1;
+      }
+    }
+
+    reportActiveHeading(Math.max(scrollIndex, clickFloorIndex));
+  });
+});
+
+milkRoot.addEventListener('click', (e: MouseEvent) => {
+  const rect = milkRoot.getBoundingClientRect();
+  const clickY = e.clientY - rect.top + milkRoot.scrollTop;
+  const idx = computeActiveHeadingAtY(clickY);
+  clickFloorIndex = idx;
+  reportActiveHeading(idx);
+});
 
 const insertAtCursor = (textarea: HTMLTextAreaElement, insertion: string) => {
   const start = textarea.selectionStart;
