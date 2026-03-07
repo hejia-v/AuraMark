@@ -1120,13 +1120,13 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <Path Width="12"
-                                      Height="12"
-                                      Margin="0,0,8,0"
+                                <Path Width="14"
+                                      Height="14"
+                                      Margin="0,0,6,0"
                                       VerticalAlignment="Center"
                                       Stretch="Uniform"
-                                      Fill="#738196"
-                                      Data="M9.946 9.946a.75.75 0 1 1 1.06 1.06l-2.12-2.12a4.75 4.75 0 1 1 1.06-1.06zM7.75 4.75a3 3 0 1 0-6 0a3 3 0 0 0 6 0" />
+                                      Fill="#677489"
+                                      Data="M10.5 3a7.5 7.5 0 0 1 5.645 12.438l4.709 4.708a.5.5 0 0 1-.708.708l-4.708-4.709A7.5 7.5 0 1 1 10.5 3zm0 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12z" />
                                 <TextBlock Grid.Column="1"
                                            VerticalAlignment="Center"
                                            FontSize="12"
@@ -1231,13 +1231,13 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
-                                            <Path Width="13"
-                                                  Height="13"
+                                            <Path Width="14"
+                                                  Height="14"
                                                   Margin="0,0,8,0"
                                                   VerticalAlignment="Center"
                                                   Stretch="Uniform"
                                                   Fill="#738196"
-                                                  Data="M9.946 9.946a.75.75 0 1 1 1.06 1.06l-2.12-2.12a4.75 4.75 0 1 1 1.06-1.06zM7.75 4.75a3 3 0 1 0-6 0a3 3 0 0 0 6 0" />
+                                                  Data="M10.5 3a7.5 7.5 0 0 1 5.645 12.438l4.709 4.708a.5.5 0 0 1-.708.708l-4.708-4.709A7.5 7.5 0 1 1 10.5 3zm0 1.5a6 6 0 1 0 0 12 6 6 0 0 0 0-12z" />
                                             <Grid Grid.Column="1">
                                                 <TextBox x:Name="QuickOpenSearchTextBox"
                                                          BorderThickness="0"
