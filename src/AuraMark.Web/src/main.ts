@@ -32,6 +32,24 @@ const dotEl = document.createElement('span');
 dotEl.className = 'doc-status-dot';
 titleEl.appendChild(dotEl);
 
+const transitionIndicatorEl = document.createElement('span');
+transitionIndicatorEl.className = 'doc-transition-indicator';
+titleEl.appendChild(transitionIndicatorEl);
+
+const transitionDotsEl = document.createElement('span');
+transitionDotsEl.className = 'doc-transition-dots';
+transitionIndicatorEl.appendChild(transitionDotsEl);
+
+for (let i = 0; i < 3; i++) {
+  const dot = document.createElement('span');
+  dot.className = 'doc-transition-dot';
+  transitionDotsEl.appendChild(dot);
+}
+
+const transitionLabelEl = document.createElement('span');
+transitionLabelEl.className = 'doc-transition-label';
+transitionIndicatorEl.appendChild(transitionLabelEl);
+
 const statusBar = document.createElement('div');
 statusBar.className = 'render-status';
 shell.appendChild(statusBar);
@@ -53,27 +71,6 @@ const createMilkRoot = () => {
 let activeMilkRoot = createMilkRoot();
 activeMilkRoot.classList.add('is-active');
 richViewport.appendChild(activeMilkRoot);
-
-const transitionOverlay = document.createElement('div');
-transitionOverlay.className = 'editor-transition';
-
-const transitionBeam = document.createElement('div');
-transitionBeam.className = 'editor-transition-beam';
-transitionOverlay.appendChild(transitionBeam);
-
-const transitionCard = document.createElement('div');
-transitionCard.className = 'editor-transition-card';
-transitionOverlay.appendChild(transitionCard);
-
-const transitionEyebrow = document.createElement('span');
-transitionEyebrow.className = 'editor-transition-eyebrow';
-transitionCard.appendChild(transitionEyebrow);
-
-const transitionTitle = document.createElement('strong');
-transitionTitle.className = 'editor-transition-title';
-transitionCard.appendChild(transitionTitle);
-
-stage.appendChild(transitionOverlay);
 
 const sourceEditor = document.createElement('textarea');
 sourceEditor.className = 'source-editor';
@@ -130,8 +127,7 @@ const getTransitionLabel = () => {
 };
 
 const updateTransitionCopy = () => {
-  transitionEyebrow.textContent = getTransitionLabel();
-  transitionTitle.textContent = titleTextEl.textContent ?? 'Untitled.md';
+  transitionLabelEl.textContent = getTransitionLabel();
 };
 
 const setTransitionState = (active: boolean, mode: 'opening' | 'switching') => {
