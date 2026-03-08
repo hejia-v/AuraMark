@@ -251,6 +251,10 @@ body {
   color: var(--text);
 }
 
+.milkdown-theme-nord {
+  --font-mono: Consolas, monospace;
+}
+
 .milkdown .ProseMirror {
   font-size: 16px;
   line-height: 1.72;
@@ -288,9 +292,10 @@ body {
   font-weight: 600;
 }
 
+.milkdown-theme-nord code,
 .milkdown .ProseMirror code {
-  font-family: 'Fira Code', Consolas, monospace;
-  font-variant-ligatures: contextual;
+  font-family: Consolas, monospace;
+  font-variant-ligatures: none;
 }
 
 .milkdown .ProseMirror pre {
@@ -302,6 +307,7 @@ body {
   overflow: auto;
 }
 
+.milkdown-theme-nord pre code,
 .milkdown .ProseMirror pre code {
   display: block;
   white-space: pre;
