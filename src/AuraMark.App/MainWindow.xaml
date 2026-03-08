@@ -1040,10 +1040,6 @@
                                   InputGestureText="Ctrl+S"
                                   Click="OnSaveNowClicked" />
                         <Separator Style="{StaticResource MenuSeparatorStyle}" />
-                        <MenuItem x:Name="FileExportMenuItem" Header="Export..."
-                                  Style="{StaticResource MenuItemStyle}"
-                                  Click="OnExportHtmlClicked" />
-                        <Separator Style="{StaticResource MenuSeparatorStyle}" />
                         <MenuItem x:Name="FileSettingsMenuItem"
                                   Header="Settings"
                                   Style="{StaticResource MenuItemStyle}"

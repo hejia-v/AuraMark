@@ -18,19 +18,16 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using AuraMark.App.Models;
 using AuraMark.Core;
-using Markdig;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
-using Microsoft.Win32;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Point = System.Windows.Point;
 using Color = System.Windows.Media.Color;
 using Button = System.Windows.Controls.Button;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
-using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 using Orientation = System.Windows.Controls.Orientation;
 using TextBox = System.Windows.Controls.TextBox;
 using DragEventArgs = System.Windows.DragEventArgs;
@@ -233,7 +230,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "MenuOpenFolder") => "打开文件夹...",
             (AppLanguage.Chinese, "MenuRecent") => "最近打开",
             (AppLanguage.Chinese, "MenuSave") => "保存",
-            (AppLanguage.Chinese, "MenuExport") => "导出...",
             (AppLanguage.Chinese, "MenuSettings") => "设置",
             (AppLanguage.Chinese, "MenuEdit") => "编辑",
             (AppLanguage.Chinese, "MenuUndo") => "撤销",
@@ -279,8 +275,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "OpenWorkspaceDescription") => "选择要作为工作区打开的文件夹",
             (AppLanguage.Chinese, "OpenMarkdownTitle") => "打开 Markdown",
             (AppLanguage.Chinese, "OpenMarkdownFilter") => "Markdown 文件|*.md;*.markdown;*.txt|所有文件|*.*",
-            (AppLanguage.Chinese, "ExportDocumentTitle") => "导出文档",
-            (AppLanguage.Chinese, "ExportDocumentFilter") => "HTML 文件|*.html|PDF 文件|*.pdf",
             (AppLanguage.Chinese, "UnsavedChangesTitle") => "未保存的更改",
             (AppLanguage.Chinese, "CloseAppPrompt") => "当前文档有未保存的更改。\n\n您想在关闭应用前保存这些更改吗？",
             (AppLanguage.Chinese, "SwitchFilePrompt") => "当前文档有未保存的更改。\n\n您想在切换文件前保存这些更改吗？",
@@ -293,8 +287,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "FileMissing") => "文件不存在。",
             (AppLanguage.Chinese, "RenameFailedPrefix") => "重命名失败",
             (AppLanguage.Chinese, "MoveFailedPrefix") => "移动失败",
-            (AppLanguage.Chinese, "PdfExportUnavailable") => "PDF 导出不可用：编辑器尚未就绪。",
-            (AppLanguage.Chinese, "PdfExportFailed") => "PDF 导出失败，请重试。",
             (AppLanguage.Chinese, "RecoveredSnapshotHint") => "已恢复本地快照，请检查后保存。",
             (AppLanguage.Chinese, "QuickOpenIndexing") => "正在索引工作区...",
             (AppLanguage.Chinese, "QuickOpenButtonTooltip") => "搜索文件 (Ctrl+P)",
@@ -310,7 +302,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "MenuOpenFolder") => "Open Folder...",
             (AppLanguage.English, "MenuRecent") => "Recent",
             (AppLanguage.English, "MenuSave") => "Save",
-            (AppLanguage.English, "MenuExport") => "Export...",
             (AppLanguage.English, "MenuSettings") => "Settings",
             (AppLanguage.English, "MenuEdit") => "Edit",
             (AppLanguage.English, "MenuUndo") => "Undo",
@@ -356,8 +347,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "OpenWorkspaceDescription") => "Select a folder to open as workspace",
             (AppLanguage.English, "OpenMarkdownTitle") => "Open Markdown",
             (AppLanguage.English, "OpenMarkdownFilter") => "Markdown Files|*.md;*.markdown;*.txt|All Files|*.*",
-            (AppLanguage.English, "ExportDocumentTitle") => "Export Document",
-            (AppLanguage.English, "ExportDocumentFilter") => "HTML|*.html|PDF|*.pdf",
             (AppLanguage.English, "UnsavedChangesTitle") => "Unsaved Changes",
             (AppLanguage.English, "CloseAppPrompt") => "The current document has unsaved changes.\n\nDo you want to save them before closing the app?",
             (AppLanguage.English, "SwitchFilePrompt") => "The current document has unsaved changes.\n\nDo you want to save them before switching files?",
@@ -370,8 +359,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "FileMissing") => "File does not exist.",
             (AppLanguage.English, "RenameFailedPrefix") => "Rename failed",
             (AppLanguage.English, "MoveFailedPrefix") => "Move failed",
-            (AppLanguage.English, "PdfExportUnavailable") => "PDF export unavailable: editor not ready.",
-            (AppLanguage.English, "PdfExportFailed") => "PDF export failed. Please retry.",
             (AppLanguage.English, "RecoveredSnapshotHint") => "Recovered local snapshot. Review and save.",
             (AppLanguage.English, "QuickOpenIndexing") => "Indexing workspace...",
             (AppLanguage.English, "QuickOpenButtonTooltip") => "Quick Open (Ctrl+P)",
@@ -398,7 +385,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         FileOpenFolderMenuItem.Header = Text("MenuOpenFolder");
         RecentMenuItem.Header = Text("MenuRecent");
         FileSaveMenuItem.Header = Text("MenuSave");
-        FileExportMenuItem.Header = Text("MenuExport");
         FileSettingsMenuItem.Header = Text("MenuSettings");
         EditMenuRoot.Header = Text("MenuEdit");
         UndoMenuItem.Header = Text("MenuUndo");
@@ -1610,11 +1596,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnRedoClicked(object sender, RoutedEventArgs e)
     {
         RequestRedo();
-    }
-
-    private async void OnExportHtmlClicked(object sender, RoutedEventArgs e)
-    {
-        await ExportDocumentAsync();
     }
 
     private void OnToggleSidebarClicked(object sender, RoutedEventArgs e)
@@ -3038,94 +3019,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // Best effort restore.
         }
     }
-    private async Task ExportDocumentAsync()
-    {
-        var dialog = new SaveFileDialog
-        {
-            Title = Text("ExportDocumentTitle"),
-            Filter = Text("ExportDocumentFilter"),
-            FileName = Path.GetFileNameWithoutExtension(_currentFilePath) + ".html",
-            AddExtension = true,
-        };
-
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        var extension = Path.GetExtension(dialog.FileName);
-        if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
-        {
-            await ExportPdfAsync(dialog.FileName);
-            return;
-        }
-
-        await ExportHtmlAsync(dialog.FileName);
-    }
-
-    private async Task ExportHtmlAsync(string outputPath)
-    {
-        var document = FrontMatterParser.Parse(_pendingMarkdown);
-        var metadataHtml = MetadataHtmlRenderer.Render(document.Metadata);
-        var htmlBody = Markdown.ToHtml(document.BodyMarkdown);
-        var title = Path.GetFileNameWithoutExtension(_currentFilePath);
-        var html = BuildHtmlDocument(title, metadataHtml + htmlBody);
-        await File.WriteAllTextAsync(outputPath, html, Encoding.UTF8);
-        SetState(EditorState.Editing, "Exported HTML");
-    }
-
-    private async Task ExportPdfAsync(string outputPath)
-    {
-        if (_webViewCore is null)
-        {
-            ShowSoftError(Text("PdfExportUnavailable"));
-            return;
-        }
-
-        var ok = await _webViewCore.PrintToPdfAsync(outputPath);
-        if (!ok)
-        {
-            ShowSoftError(Text("PdfExportFailed"));
-            PostError(ErrorCodes.SaveIo, "pdf export failed", outputPath, retryable: true);
-            return;
-        }
-
-        SetState(EditorState.Editing, "Exported PDF");
-    }
-
-    private static string BuildHtmlDocument(string title, string htmlBody)
-    {
-        return $@"<!doctype html>
-<html lang=""en"">
-<head>
-  <meta charset=""UTF-8"" />
-  <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
-  <title>{title}</title>
-  <style>
-    body {{ margin: 2rem auto; max-width: 900px; line-height: 1.7; color: #434C5E; font-family: ""Noto Sans SC"", ""Segoe UI"", sans-serif; background: #F9FAFB; }}
-    .frontmatter-panel {{ margin: 0 0 1rem; padding: 0.72rem 0.82rem; border: 1px solid rgba(67, 76, 94, 0.1); border-radius: 10px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94)); box-shadow: 0 6px 18px rgba(129, 161, 193, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9); }}
-    .frontmatter-row {{ display: grid; grid-template-columns: minmax(88px, 136px) minmax(0, 1fr); gap: 0.65rem; padding: 0.38rem 0; border-top: 1px solid rgba(67, 76, 94, 0.06); }}
-    .frontmatter-row:first-child {{ border-top: none; padding-top: 0; }}
-    .frontmatter-row:last-child {{ padding-bottom: 0; }}
-    .frontmatter-key {{ align-self: start; color: rgba(67, 76, 94, 0.56); font-size: 0.8rem; font-weight: 700; text-transform: lowercase; letter-spacing: 0.04em; }}
-    .frontmatter-value {{ padding-top: 0.08rem; }}
-    .frontmatter-text {{ display: inline-block; color: #2E3440; font-size: 0.94rem; line-height: 1.45; }}
-    .frontmatter-chips {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
-    .frontmatter-chip {{ display: inline-flex; align-items: center; min-height: 1.45rem; padding: 0 0.58rem; border-radius: 999px; border: 1px solid rgba(129, 161, 193, 0.16); background: rgba(129, 161, 193, 0.1); color: #445468; font-size: 0.84rem; font-weight: 600; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85); }}
-    .frontmatter-structured {{ margin: 0; padding: 0.6rem 0.72rem; border-radius: 8px; background: rgba(243, 244, 246, 0.82); border: 1px solid rgba(67, 76, 94, 0.07); font-size: 0.84rem; line-height: 1.45; white-space: pre-wrap; }}
-    pre, code {{ font-family: ""Fira Code"", Consolas, monospace; }}
-    pre {{ padding: 1rem; border-radius: 8px; background: #F3F4F6; overflow: auto; }}
-    img {{ max-width: 100%; border-radius: 8px; }}
-    table {{ border-collapse: collapse; width: 100%; }}
-    th, td {{ border: 1px solid rgba(67, 76, 94, 0.2); padding: 0.45rem 0.6rem; }}
-  </style>
-</head>
-<body>
-{htmlBody}
-</body>
-</html>";
-    }
-
     private void AttachFileWatcher(string path)
     {
         _fileWatcher?.Dispose();
