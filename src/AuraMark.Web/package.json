@@ -10,12 +10,13 @@
   },
   "dependencies": {
     "@milkdown/core": "^7.0.0",
+    "@milkdown/plugin-listener": "^7.0.0",
     "@milkdown/plugin-prism": "^7.0.0",
     "@milkdown/preset-commonmark": "^7.0.0",
     "@milkdown/preset-gfm": "^7.0.0",
     "@milkdown/theme-nord": "^7.0.0",
-    "@milkdown/plugin-listener": "^7.0.0",
-    "prismjs": "^1.30.0"
+    "prismjs": "^1.30.0",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

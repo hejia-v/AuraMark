@@ -57,7 +57,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _outlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex SkillFrontMatterNameRegex = new(@"^\s*name\s*:\s*(.+?)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex MarkdownHeadingRegex = new(@"^\s*#\s+(.+?)\s*$", RegexOptions.Compiled);
     private const int MaxRecentEntries = 25;
     private const int MaxOpenFileHistoryEntries = 100;
@@ -1565,32 +1564,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            var lines = File.ReadLines(skillFilePath).Take(120).ToList();
-            if (lines.Count == 0)
+            var document = FrontMatterParser.Parse(File.ReadAllText(skillFilePath));
+            if (document.TryGetScalarValue("name", out var metadataName))
             {
-                return fallback;
+                return NormalizeSkillDisplayName(metadataName, fallback);
             }
 
-            if (lines[0].Trim().Equals("---", StringComparison.Ordinal))
+            using var reader = new StringReader(document.BodyMarkdown);
+            string? line;
+            var scannedLines = 0;
+            while (scannedLines < 120 && (line = reader.ReadLine()) is not null)
             {
-                for (var i = 1; i < lines.Count; i++)
-                {
-                    var line = lines[i];
-                    if (line.Trim().Equals("---", StringComparison.Ordinal))
-                    {
-                        break;
-                    }
-
-                    var match = SkillFrontMatterNameRegex.Match(line);
-                    if (match.Success)
-                    {
-                        return NormalizeSkillDisplayName(match.Groups[1].Value, fallback);
-                    }
-                }
-            }
-
-            foreach (var line in lines)
-            {
+                scannedLines++;
                 var match = MarkdownHeadingRegex.Match(line);
                 if (match.Success)
                 {
@@ -2560,7 +2545,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void QueueDocumentToWeb(string markdown)
     {
-        _queuedDocumentForWeb = markdown;
+        _queuedDocumentForWeb = FrontMatterParser.Parse(markdown).ToJson();
         ResetHistoryAvailability();
         TryPushQueuedDocumentToWeb();
     }
@@ -3080,9 +3065,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task ExportHtmlAsync(string outputPath)
     {
-        var htmlBody = Markdown.ToHtml(_pendingMarkdown);
+        var document = FrontMatterParser.Parse(_pendingMarkdown);
+        var metadataHtml = MetadataHtmlRenderer.Render(document.Metadata);
+        var htmlBody = Markdown.ToHtml(document.BodyMarkdown);
         var title = Path.GetFileNameWithoutExtension(_currentFilePath);
-        var html = BuildHtmlDocument(title, htmlBody);
+        var html = BuildHtmlDocument(title, metadataHtml + htmlBody);
         await File.WriteAllTextAsync(outputPath, html, Encoding.UTF8);
         SetState(EditorState.Editing, "Exported HTML");
     }
@@ -3115,7 +3102,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
   <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
   <title>{title}</title>
   <style>
-    body {{ margin: 2rem auto; max-width: 900px; line-height: 1.7; color: #434C5E; font-family: ""Noto Sans SC"", ""Segoe UI"", sans-serif; }}
+    body {{ margin: 2rem auto; max-width: 900px; line-height: 1.7; color: #434C5E; font-family: ""Noto Sans SC"", ""Segoe UI"", sans-serif; background: #F9FAFB; }}
+    .frontmatter-panel {{ margin: 0 0 1rem; padding: 0.72rem 0.82rem; border: 1px solid rgba(67, 76, 94, 0.1); border-radius: 10px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94)); box-shadow: 0 6px 18px rgba(129, 161, 193, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9); }}
+    .frontmatter-row {{ display: grid; grid-template-columns: minmax(88px, 136px) minmax(0, 1fr); gap: 0.65rem; padding: 0.38rem 0; border-top: 1px solid rgba(67, 76, 94, 0.06); }}
+    .frontmatter-row:first-child {{ border-top: none; padding-top: 0; }}
+    .frontmatter-row:last-child {{ padding-bottom: 0; }}
+    .frontmatter-key {{ align-self: start; color: rgba(67, 76, 94, 0.56); font-size: 0.8rem; font-weight: 700; text-transform: lowercase; letter-spacing: 0.04em; }}
+    .frontmatter-value {{ padding-top: 0.08rem; }}
+    .frontmatter-text {{ display: inline-block; color: #2E3440; font-size: 0.94rem; line-height: 1.45; }}
+    .frontmatter-chips {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
+    .frontmatter-chip {{ display: inline-flex; align-items: center; min-height: 1.45rem; padding: 0 0.58rem; border-radius: 999px; border: 1px solid rgba(129, 161, 193, 0.16); background: rgba(129, 161, 193, 0.1); color: #445468; font-size: 0.84rem; font-weight: 600; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85); }}
+    .frontmatter-structured {{ margin: 0; padding: 0.6rem 0.72rem; border-radius: 8px; background: rgba(243, 244, 246, 0.82); border: 1px solid rgba(67, 76, 94, 0.07); font-size: 0.84rem; line-height: 1.45; white-space: pre-wrap; }}
     pre, code {{ font-family: ""Fira Code"", Consolas, monospace; }}
     pre {{ padding: 1rem; border-radius: 8px; background: #F3F4F6; overflow: auto; }}
     img {{ max-width: 100%; border-radius: 8px; }}
@@ -3168,7 +3165,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _outlineItems.Clear();
 
         var index = 0;
-        foreach (Match match in HeadingRegex.Matches(markdown))
+        var bodyMarkdown = FrontMatterParser.Parse(markdown).BodyMarkdown;
+        foreach (Match match in HeadingRegex.Matches(bodyMarkdown))
         {
             if (!match.Success)
             {

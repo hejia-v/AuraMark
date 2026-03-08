@@ -6,6 +6,7 @@ import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { nord } from '@milkdown/theme-nord';
 import { history, redo, redoDepth, undo, undoDepth } from 'prosemirror-history';
+import { DocumentPayload, composeRawMarkdown, createRawDocument, parseIncomingDocument, parseRawDocument } from './documentPayload';
 import { HostCommand, IpcErrorPayload, WebMessagePayload, onHostMessage, sendToHost } from './ipc';
 
 const host = document.getElementById('app');
@@ -62,13 +63,30 @@ const richViewport = document.createElement('div');
 richViewport.className = 'rich-viewport';
 stage.appendChild(richViewport);
 
-const createMilkRoot = () => {
-  const root = document.createElement('div');
-  root.className = 'milk-root';
-  return root;
+type RichDocumentFrame = {
+  container: HTMLDivElement;
+  metadataPanel: HTMLDivElement;
+  editorRoot: HTMLDivElement;
 };
 
-let activeMilkRoot = createMilkRoot();
+const createRichFrame = (): RichDocumentFrame => {
+  const container = document.createElement('div');
+  container.className = 'milk-root';
+
+  const metadataPanel = document.createElement('div');
+  metadataPanel.className = 'metadata-panel';
+  metadataPanel.hidden = true;
+  container.appendChild(metadataPanel);
+
+  const editorRoot = document.createElement('div');
+  editorRoot.className = 'milk-body-root';
+  container.appendChild(editorRoot);
+
+  return { container, metadataPanel, editorRoot };
+};
+
+let activeFrame = createRichFrame();
+let activeMilkRoot = activeFrame.container;
 activeMilkRoot.classList.add('is-active');
 richViewport.appendChild(activeMilkRoot);
 
@@ -85,6 +103,7 @@ let inputFrozen = false;
 let suppressOutbound = false;
 let currentMarkdown = '';
 let savedMarkdown = '';
+let currentDocument: DocumentPayload = createRawDocument('');
 let applySequence = 0;
 let renderQueue: Promise<void> = Promise.resolve();
 let lastReportedActiveIndex = -1;
@@ -210,6 +229,67 @@ const updateDirtyDot = () => {
   dotEl.title = dirty ? localize('unsavedChanges') : '';
 };
 
+const setCurrentDocument = (document: DocumentPayload) => {
+  currentDocument = document;
+  currentMarkdown = document.rawMarkdown;
+};
+
+const updateCurrentDocumentBody = (bodyMarkdown: string) => {
+  const nextDocument: DocumentPayload = {
+    ...currentDocument,
+    bodyMarkdown,
+    rawMarkdown: composeRawMarkdown(currentDocument.frontMatterRaw, bodyMarkdown),
+  };
+  setCurrentDocument(nextDocument);
+  return nextDocument;
+};
+
+const renderMetadataPanel = (panel: HTMLDivElement, metadata: DocumentPayload['metadata']) => {
+  panel.replaceChildren();
+  panel.hidden = metadata.length === 0;
+  if (metadata.length === 0) {
+    return;
+  }
+
+  for (const entry of metadata) {
+    const row = document.createElement('div');
+    row.className = 'metadata-row';
+
+    const key = document.createElement('div');
+    key.className = 'metadata-key';
+    key.textContent = entry.key;
+    row.appendChild(key);
+
+    const value = document.createElement('div');
+    value.className = 'metadata-value';
+
+    if (entry.kind === 'list') {
+      const chips = document.createElement('div');
+      chips.className = 'metadata-chips';
+      for (const item of entry.items ?? []) {
+        const chip = document.createElement('span');
+        chip.className = 'metadata-chip';
+        chip.textContent = item;
+        chips.appendChild(chip);
+      }
+      value.appendChild(chips);
+    } else if (entry.kind === 'object') {
+      const structured = document.createElement('pre');
+      structured.className = 'metadata-structured';
+      structured.textContent = entry.structuredText ?? 'null';
+      value.appendChild(structured);
+    } else {
+      const text = document.createElement('span');
+      text.className = 'metadata-text';
+      text.textContent = entry.displayText ?? '';
+      value.appendChild(text);
+    }
+
+    row.appendChild(value);
+    panel.appendChild(row);
+  }
+};
+
 const setStatus = (_text: string) => {
   // no-op; dot is driven by content comparison
 };
@@ -315,12 +395,13 @@ const pushSourceUndoSnapshot = (previousMarkdown: string, inputType: string) => 
 };
 
 const applySourceHistoryMarkdown = (markdown: string) => {
-  currentMarkdown = markdown;
-  sourceEditor.value = markdown;
+  const document = parseRawDocument(markdown);
+  setCurrentDocument(document);
+  sourceEditor.value = document.rawMarkdown;
   sourceEditor.focus();
-  sourceEditor.selectionStart = markdown.length;
-  sourceEditor.selectionEnd = markdown.length;
-  sendUpdate(markdown);
+  sourceEditor.selectionStart = document.rawMarkdown.length;
+  sourceEditor.selectionEnd = document.rawMarkdown.length;
+  sendUpdate(document.rawMarkdown);
   updateDirtyDot();
   reportHistoryState();
 };
@@ -408,13 +489,13 @@ const commitSourceEditorMutation = (inputType: string, mutate: () => void) => {
   mutate();
   pendingSourceInputType = inputType;
   pushSourceUndoSnapshot(previousMarkdown, inputType);
-  currentMarkdown = sourceEditor.value;
-  sendUpdate(currentMarkdown);
+  setCurrentDocument(parseRawDocument(sourceEditor.value));
+  sendUpdate(currentDocument.rawMarkdown);
   updateDirtyDot();
   reportHistoryState();
 };
 
-const renderEditor = async (markdown: string, sequence: number) => {
+const renderEditor = async (document: DocumentPayload, sequence: number) => {
   renderQueue = renderQueue
     .catch(() => undefined)
     .then(async () => {
@@ -423,15 +504,16 @@ const renderEditor = async (markdown: string, sequence: number) => {
       }
 
       const previousEditor = editor;
-      const previousRoot = activeMilkRoot;
-      const nextRoot = createMilkRoot();
-      nextRoot.classList.add('is-staged');
-      richViewport.appendChild(nextRoot);
+      const previousFrame = activeFrame;
+      const nextFrame = createRichFrame();
+      renderMetadataPanel(nextFrame.metadataPanel, document.metadata);
+      nextFrame.container.classList.add('is-staged');
+      richViewport.appendChild(nextFrame.container);
 
       const nextEditor = await Editor.make()
         .config((ctx) => {
-          ctx.set(rootCtx, nextRoot);
-          ctx.set(defaultValueCtx, markdown);
+          ctx.set(rootCtx, nextFrame.editorRoot);
+          ctx.set(defaultValueCtx, document.bodyMarkdown);
           ctx.update(prosePluginsCtx, (plugins) => [...plugins, history()]);
         })
         .use(nord)
@@ -444,14 +526,14 @@ const renderEditor = async (markdown: string, sequence: number) => {
         if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
           await nextEditor.destroy(true);
         }
-        nextRoot.remove();
+        nextFrame.container.remove();
         return;
       }
 
       const listeners = nextEditor.ctx.get(listenerCtx);
       listeners.markdownUpdated((_ctx, markdownText) => {
-        currentMarkdown = markdownText;
-        sourceEditor.value = markdownText;
+        const nextDocument = updateCurrentDocumentBody(markdownText);
+        sourceEditor.value = nextDocument.rawMarkdown;
         updateDirtyDot();
         reportHistoryState();
 
@@ -459,36 +541,37 @@ const renderEditor = async (markdown: string, sequence: number) => {
           return;
         }
 
-        sendUpdate(markdownText);
+        sendUpdate(nextDocument.rawMarkdown);
       });
 
       if (sequence !== applySequence) {
         if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
           await nextEditor.destroy(true);
         }
-        nextRoot.remove();
+        nextFrame.container.remove();
         return;
       }
 
-      bindMilkRootInteractions(nextRoot);
-      nextRoot.classList.remove('is-staged');
-      nextRoot.classList.add('is-entering');
-      previousRoot.classList.add('is-leaving');
+      bindMilkRootInteractions(nextFrame.container);
+      nextFrame.container.classList.remove('is-staged');
+      nextFrame.container.classList.add('is-entering');
+      previousFrame.container.classList.add('is-leaving');
       await afterNextPaint();
       if (sequence !== applySequence) {
         if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
           await nextEditor.destroy(true);
         }
-        nextRoot.remove();
+        nextFrame.container.remove();
         return;
       }
       editor = nextEditor;
-      activeMilkRoot = nextRoot;
+      activeFrame = nextFrame;
+      activeMilkRoot = nextFrame.container;
       prevScrollTop = 0;
-      nextRoot.classList.add('is-active');
-      previousRoot.classList.add('is-hidden');
+      nextFrame.container.classList.add('is-active');
+      previousFrame.container.classList.add('is-hidden');
       await new Promise((resolve) => window.setTimeout(resolve, 170));
-      previousRoot.remove();
+      previousFrame.container.remove();
       if (typeof (previousEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> } | null)?.destroy === 'function') {
         await previousEditor.destroy(true);
       }
@@ -504,12 +587,12 @@ const setSourceMode = (enabled: boolean) => {
   sourceMode = enabled;
   stage.classList.toggle('is-source-mode', sourceMode);
   if (sourceMode) {
-    sourceEditor.value = currentMarkdown;
+    sourceEditor.value = currentDocument.rawMarkdown;
     sourceEditor.focus();
     resetSourceHistory();
     reportActiveHeading(-1);
   } else {
-    void applyRemoteMarkdown(sourceEditor.value, true);
+    void applyRemoteDocument(parseRawDocument(sourceEditor.value), true);
   }
 };
 
@@ -520,7 +603,7 @@ const setInputFrozen = (frozen: boolean) => {
   reportHistoryState();
 };
 
-const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) => {
+const applyRemoteDocument = async (document: DocumentPayload, fromSourceToggle = false) => {
   const sequence = ++applySequence;
   const transitionState: 'opening' | 'switching' = editor ? 'switching' : 'opening';
   lastReportedActiveIndex = -1;
@@ -528,13 +611,13 @@ const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) =
   suppressOutbound = true;
   setTransitionState(true, transitionState);
   try {
-    currentMarkdown = markdown;
-    savedMarkdown = markdown;
-    sourceEditor.value = markdown;
+    setCurrentDocument(document);
+    savedMarkdown = document.rawMarkdown;
+    sourceEditor.value = document.rawMarkdown;
     updateDirtyDot();
 
     if (!sourceMode || fromSourceToggle) {
-      await renderEditor(markdown, sequence);
+      await renderEditor(document, sequence);
     }
 
     if (sequence !== applySequence) {
@@ -699,10 +782,14 @@ const insertCodeBlock = () => {
     return;
   }
 
-  const merged = `${currentMarkdown}${snippet}`;
-  void applyRemoteMarkdown(merged);
+  const mergedDocument: DocumentPayload = {
+    ...currentDocument,
+    bodyMarkdown: `${currentDocument.bodyMarkdown}${snippet}`,
+    rawMarkdown: composeRawMarkdown(currentDocument.frontMatterRaw, `${currentDocument.bodyMarkdown}${snippet}`),
+  };
+  void applyRemoteDocument(mergedDocument);
   if (!inputFrozen) {
-    sendUpdate(merged);
+    sendUpdate(mergedDocument.rawMarkdown);
   }
 };
 
@@ -715,13 +802,14 @@ const handleHostCommand = (command: HostCommand) => {
       performRedo();
       return;
     case 'ReplaceAll':
-      void applyRemoteMarkdown(command.content ?? '');
+      void applyRemoteDocument(parseIncomingDocument(command.content ?? ''));
       return;
     case 'E2eSetMarkdown': {
       const markdown = command.content ?? '';
-      void applyRemoteMarkdown(markdown);
+      const document = parseRawDocument(markdown);
+      void applyRemoteDocument(document);
       if (!inputFrozen) {
-        sendUpdate(markdown);
+        sendUpdate(document.rawMarkdown);
       }
       return;
     }
@@ -792,8 +880,8 @@ sourceEditor.addEventListener('input', () => {
 
   const previousMarkdown = currentMarkdown;
   pushSourceUndoSnapshot(previousMarkdown, pendingSourceInputType);
-  currentMarkdown = sourceEditor.value;
-  sendUpdate(currentMarkdown);
+  setCurrentDocument(parseRawDocument(sourceEditor.value));
+  sendUpdate(currentDocument.rawMarkdown);
   updateDirtyDot();
   reportHistoryState();
 });
@@ -844,7 +932,7 @@ window.addEventListener('keydown', (event) => {
 onHostMessage((payload: WebMessagePayload) => {
   if (payload.type === 'Init') {
     initialized = true;
-    void applyRemoteMarkdown(payload.content || '');
+    void applyRemoteDocument(parseIncomingDocument(payload.content || ''));
     return;
   }
 
@@ -857,7 +945,7 @@ onHostMessage((payload: WebMessagePayload) => {
   }
 
   if (payload.type === 'Ack' && payload.content === 'Saved') {
-    savedMarkdown = currentMarkdown;
+    savedMarkdown = currentDocument.rawMarkdown;
     updateDirtyDot();
     reportHistoryState();
     return;
