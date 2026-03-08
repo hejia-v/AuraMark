@@ -223,6 +223,11 @@
                                         <MenuItem Header="复制相对路径" Style="{StaticResource TreeMenuItemStyle}"
                                                   Click="OnTreeMenuCopyRelativePath" />
                                         <Separator Style="{StaticResource TreeMenuSeparatorStyle}" />
+                                        <MenuItem x:Name="TreeMenuOpenInExplorerMenuItem"
+                                                  Header="在文件管理器打开"
+                                                  Style="{StaticResource TreeMenuItemStyle}"
+                                                  Click="OnTreeMenuOpenInExplorer" />
+                                        <Separator Style="{StaticResource TreeMenuSeparatorStyle}" />
                                         <MenuItem Header="重命名"       Style="{StaticResource TreeMenuItemStyle}"
                                                   Click="OnTreeMenuRename" />
                                         <Separator Style="{StaticResource TreeMenuSeparatorStyle}" />

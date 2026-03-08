@@ -1,6 +1,7 @@
 ﻿
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -262,6 +263,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "TooltipBack") => "后退",
             (AppLanguage.Chinese, "TooltipForward") => "前进",
             (AppLanguage.Chinese, "LocateCurrentFileTooltip") => "在文件树中定位当前文件",
+            (AppLanguage.Chinese, "TreeMenuOpenInExplorer") => "在文件管理器打开",
             (AppLanguage.Chinese, "SkillsButtonTooltip") => "技能",
             (AppLanguage.Chinese, "WorkspaceAgentsTooltip") => "打开 AGENTS.md",
             (AppLanguage.Chinese, "WorkspaceClaudeTooltip") => "打开 CLAUDE.md",
@@ -338,6 +340,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "TooltipBack") => "Back",
             (AppLanguage.English, "TooltipForward") => "Forward",
             (AppLanguage.English, "LocateCurrentFileTooltip") => "Locate current file in tree",
+            (AppLanguage.English, "TreeMenuOpenInExplorer") => "Open in File Explorer",
             (AppLanguage.English, "SkillsButtonTooltip") => "Skills",
             (AppLanguage.English, "WorkspaceAgentsTooltip") => "Open AGENTS.md",
             (AppLanguage.English, "WorkspaceClaudeTooltip") => "Open CLAUDE.md",
@@ -4163,6 +4166,52 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(_workspaceRoot)) return;
         var rel = Path.GetRelativePath(_workspaceRoot, node.FullPath).Replace('\\', '/');
         SetClipboardTextSafe(rel);
+    }
+
+    private void OnTreeMenuOpenInExplorer(object sender, RoutedEventArgs e)
+    {
+        if (GetNodeFromMenuSender(sender) is not { } node)
+        {
+            return;
+        }
+
+        try
+        {
+            if (node.IsDirectory)
+            {
+                if (!Directory.Exists(node.FullPath))
+                {
+                    ShowSoftError(Text("FolderMissing"));
+                    return;
+                }
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{node.FullPath}\"",
+                    UseShellExecute = true,
+                });
+
+                return;
+            }
+
+            if (!File.Exists(node.FullPath))
+            {
+                ShowSoftError(Text("FileMissing"));
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{node.FullPath}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowSoftError($"{Text("OpenFailedPrefix")}: {ex.Message}");
+        }
     }
 
     private async void OnTreeMenuNewMarkdown(object sender, RoutedEventArgs e)
