@@ -69,9 +69,19 @@ type RichDocumentFrame = {
   editorRoot: HTMLDivElement;
 };
 
+const disableWritingAssistance = (element: HTMLElement) => {
+  element.spellcheck = false;
+  element.setAttribute('spellcheck', 'false');
+  element.setAttribute('autocapitalize', 'off');
+  element.setAttribute('autocorrect', 'off');
+  element.setAttribute('data-gramm', 'false');
+  element.setAttribute('data-gramm_editor', 'false');
+};
+
 const createRichFrame = (): RichDocumentFrame => {
   const container = document.createElement('div');
   container.className = 'milk-root';
+  disableWritingAssistance(container);
 
   const metadataPanel = document.createElement('div');
   metadataPanel.className = 'metadata-panel';
@@ -80,6 +90,7 @@ const createRichFrame = (): RichDocumentFrame => {
 
   const editorRoot = document.createElement('div');
   editorRoot.className = 'milk-body-root';
+  disableWritingAssistance(editorRoot);
   container.appendChild(editorRoot);
 
   return { container, metadataPanel, editorRoot };
@@ -92,7 +103,7 @@ richViewport.appendChild(activeMilkRoot);
 
 const sourceEditor = document.createElement('textarea');
 sourceEditor.className = 'source-editor';
-sourceEditor.spellcheck = false;
+disableWritingAssistance(sourceEditor);
 sourceEditor.setAttribute('aria-label', 'Markdown source');
 stage.appendChild(sourceEditor);
 
@@ -521,6 +532,8 @@ const renderEditor = async (document: DocumentPayload, sequence: number) => {
         .use(gfm)
         .use(listener)
         .create();
+
+      disableWritingAssistance(nextEditor.action((ctx) => ctx.get(editorViewCtx)).dom);
 
       if (sequence !== applySequence) {
         if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
