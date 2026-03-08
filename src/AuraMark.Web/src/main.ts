@@ -2,10 +2,12 @@ import './style.css';
 import 'prismjs/themes/prism.css';
 import { Editor, defaultValueCtx, editorViewCtx, prosePluginsCtx, rootCtx } from '@milkdown/core';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
+import { prism } from '@milkdown/plugin-prism';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { gfm } from '@milkdown/preset-gfm';
 import { nord } from '@milkdown/theme-nord';
 import { history, redo, redoDepth, undo, undoDepth } from 'prosemirror-history';
+import { createCodeBlockView, configureCodeBlockPrism, notifyCodeBlockLocaleChange } from './codeBlockEnhancements';
 import { DocumentPayload, composeRawMarkdown, createRawDocument, parseIncomingDocument, parseRawDocument } from './documentPayload';
 import { HostCommand, IpcErrorPayload, WebMessagePayload, onHostMessage, sendToHost } from './ipc';
 
@@ -145,6 +147,7 @@ const applyLanguage = (language: string) => {
   sourceEditor.setAttribute('aria-label', localize('markdownSource'));
   updateDirtyDot();
   updateTransitionCopy();
+  notifyCodeBlockLocaleChange();
 };
 
 const getTransitionLabel = () => {
@@ -530,6 +533,11 @@ const renderEditor = async (document: DocumentPayload, sequence: number) => {
         .use(nord)
         .use(commonmark)
         .use(gfm)
+        .use(prism)
+        .config((ctx) => {
+          configureCodeBlockPrism(ctx);
+        })
+        .use(createCodeBlockView(() => uiLanguage))
         .use(listener)
         .create();
 
