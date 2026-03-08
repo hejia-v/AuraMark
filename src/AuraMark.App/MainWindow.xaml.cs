@@ -2454,6 +2454,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var isSwitchingDocument =
             !string.IsNullOrWhiteSpace(_currentFilePath) &&
             !path.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase);
+        var showBlockingLoading = !_webReady || !_editorInitialized || !isSwitchingDocument;
         if (!await EnsureReadyToSwitchDocumentAsync(path))
         {
             return;
@@ -2462,7 +2463,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var loadVersion = Interlocked.Increment(ref _documentLoadVersion);
 
         SetState(EditorState.Loading);
-        ShowLoading(true, Text("LoadingDocument"));
+        if (showBlockingLoading)
+        {
+            ShowLoading(true, Text("LoadingDocument"));
+        }
         HideError();
 
         if (createIfMissing && !File.Exists(path))
@@ -2540,11 +2544,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _pendingOutlineScrollIndex = null;
         AttachFileWatcher(path);
 
-        if (isSwitchingDocument)
-        {
-            await ResetWebViewAsync();
-        }
-
         QueueDocumentToWeb(markdown);
 
         if (!createIfMissing)
@@ -2570,7 +2569,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        ShowLoading(true, Text("Rendering"));
+        if (!_editorInitialized || LoadingOverlay.Visibility == Visibility.Visible)
+        {
+            ShowLoading(true, Text("Rendering"));
+        }
         _isDocumentRendering = true;
 
         if (!_editorInitialized)

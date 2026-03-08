@@ -40,9 +40,40 @@ const stage = document.createElement('div');
 stage.className = 'editor-stage';
 shell.appendChild(stage);
 
-const milkRoot = document.createElement('div');
-milkRoot.className = 'milk-root';
-stage.appendChild(milkRoot);
+const richViewport = document.createElement('div');
+richViewport.className = 'rich-viewport';
+stage.appendChild(richViewport);
+
+const createMilkRoot = () => {
+  const root = document.createElement('div');
+  root.className = 'milk-root';
+  return root;
+};
+
+let activeMilkRoot = createMilkRoot();
+activeMilkRoot.classList.add('is-active');
+richViewport.appendChild(activeMilkRoot);
+
+const transitionOverlay = document.createElement('div');
+transitionOverlay.className = 'editor-transition';
+
+const transitionBeam = document.createElement('div');
+transitionBeam.className = 'editor-transition-beam';
+transitionOverlay.appendChild(transitionBeam);
+
+const transitionCard = document.createElement('div');
+transitionCard.className = 'editor-transition-card';
+transitionOverlay.appendChild(transitionCard);
+
+const transitionEyebrow = document.createElement('span');
+transitionEyebrow.className = 'editor-transition-eyebrow';
+transitionCard.appendChild(transitionEyebrow);
+
+const transitionTitle = document.createElement('strong');
+transitionTitle.className = 'editor-transition-title';
+transitionCard.appendChild(transitionTitle);
+
+stage.appendChild(transitionOverlay);
 
 const sourceEditor = document.createElement('textarea');
 sourceEditor.className = 'source-editor';
@@ -69,6 +100,8 @@ let sourceLastEditAt = 0;
 let sourceLastEditKind = '';
 let pendingSourceInputType = '';
 let uiLanguage = 'en-US';
+let transitionTimer = 0;
+let transitionMode: 'opening' | 'switching' = 'opening';
 
 const localize = (key: 'markdownSource' | 'unsavedChanges') => {
   const chinese = uiLanguage.toLowerCase().startsWith('zh');
@@ -84,7 +117,56 @@ const applyLanguage = (language: string) => {
   document.documentElement.lang = uiLanguage;
   sourceEditor.setAttribute('aria-label', localize('markdownSource'));
   updateDirtyDot();
+  updateTransitionCopy();
 };
+
+const getTransitionLabel = () => {
+  const chinese = uiLanguage.toLowerCase().startsWith('zh');
+  if (transitionMode === 'opening') {
+    return chinese ? '\u6b63\u5728\u6253\u5f00\u6587\u6863' : 'Opening document';
+  }
+
+  return chinese ? '\u6b63\u5728\u5207\u6362\u6587\u6863' : 'Switching document';
+};
+
+const updateTransitionCopy = () => {
+  transitionEyebrow.textContent = getTransitionLabel();
+  transitionTitle.textContent = titleTextEl.textContent ?? 'Untitled.md';
+};
+
+const setTransitionState = (active: boolean, mode: 'opening' | 'switching') => {
+  transitionMode = mode;
+  updateTransitionCopy();
+  stage.classList.toggle('is-busy', active);
+
+  if (active) {
+    if (transitionTimer) {
+      return;
+    }
+
+    transitionTimer = window.setTimeout(() => {
+      transitionTimer = 0;
+      shell.classList.add('is-transitioning');
+    }, 90);
+    return;
+  }
+
+  if (transitionTimer) {
+    window.clearTimeout(transitionTimer);
+    transitionTimer = 0;
+  }
+
+  shell.classList.remove('is-transitioning');
+};
+
+const afterNextPaint = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resolve();
+      });
+    });
+  });
 
 window.addEventListener('error', (event) => {
   sendToHost({
@@ -344,22 +426,15 @@ const renderEditor = async (markdown: string, sequence: number) => {
         return;
       }
 
-      if (editor) {
-        const previousEditor = editor;
-        editor = null;
-        if (typeof (previousEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
-          await previousEditor.destroy(true);
-        }
-      }
+      const previousEditor = editor;
+      const previousRoot = activeMilkRoot;
+      const nextRoot = createMilkRoot();
+      nextRoot.classList.add('is-staged');
+      richViewport.appendChild(nextRoot);
 
-      if (sequence !== applySequence) {
-        return;
-      }
-
-      milkRoot.innerHTML = '';
       const nextEditor = await Editor.make()
         .config((ctx) => {
-          ctx.set(rootCtx, milkRoot);
+          ctx.set(rootCtx, nextRoot);
           ctx.set(defaultValueCtx, markdown);
           ctx.update(prosePluginsCtx, (plugins) => [...plugins, history()]);
         })
@@ -373,10 +448,10 @@ const renderEditor = async (markdown: string, sequence: number) => {
         if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
           await nextEditor.destroy(true);
         }
+        nextRoot.remove();
         return;
       }
 
-      editor = nextEditor;
       const listeners = nextEditor.ctx.get(listenerCtx);
       listeners.markdownUpdated((_ctx, markdownText) => {
         currentMarkdown = markdownText;
@@ -390,6 +465,37 @@ const renderEditor = async (markdown: string, sequence: number) => {
 
         sendUpdate(markdownText);
       });
+
+      if (sequence !== applySequence) {
+        if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
+          await nextEditor.destroy(true);
+        }
+        nextRoot.remove();
+        return;
+      }
+
+      bindMilkRootInteractions(nextRoot);
+      nextRoot.classList.remove('is-staged');
+      nextRoot.classList.add('is-entering');
+      previousRoot.classList.add('is-leaving');
+      await afterNextPaint();
+      if (sequence !== applySequence) {
+        if (typeof (nextEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> }).destroy === 'function') {
+          await nextEditor.destroy(true);
+        }
+        nextRoot.remove();
+        return;
+      }
+      editor = nextEditor;
+      activeMilkRoot = nextRoot;
+      prevScrollTop = 0;
+      nextRoot.classList.add('is-active');
+      previousRoot.classList.add('is-hidden');
+      await new Promise((resolve) => window.setTimeout(resolve, 170));
+      previousRoot.remove();
+      if (typeof (previousEditor as { destroy?: (clearPlugins?: boolean) => Promise<unknown> } | null)?.destroy === 'function') {
+        await previousEditor.destroy(true);
+      }
 
       reportActiveHeading(computeActiveHeading());
       reportHistoryState();
@@ -420,9 +526,11 @@ const setInputFrozen = (frozen: boolean) => {
 
 const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) => {
   const sequence = ++applySequence;
+  const transitionState: 'opening' | 'switching' = editor ? 'switching' : 'opening';
   lastReportedActiveIndex = -1;
   clickFloorIndex = -1;
   suppressOutbound = true;
+  setTransitionState(true, transitionState);
   try {
     currentMarkdown = markdown;
     savedMarkdown = markdown;
@@ -451,6 +559,7 @@ const applyRemoteMarkdown = async (markdown: string, fromSourceToggle = false) =
   } finally {
     if (sequence === applySequence) {
       suppressOutbound = false;
+      setTransitionState(false, transitionState);
     }
   }
 };
@@ -485,7 +594,7 @@ const scrollToHeading = (index: number | undefined) => {
     return;
   }
 
-  const headings = milkRoot.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  const headings = activeMilkRoot.querySelectorAll('h1, h2, h3, h4, h5, h6');
   const target = headings[index] as HTMLElement | undefined;
   if (!target) {
     return;
@@ -495,7 +604,7 @@ const scrollToHeading = (index: number | undefined) => {
 };
 
 const computeActiveHeadingAtY = (y: number): number => {
-  const headings = milkRoot.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  const headings = activeMilkRoot.querySelectorAll('h1, h2, h3, h4, h5, h6');
   if (headings.length === 0) {
     return -1;
   }
@@ -513,7 +622,7 @@ const computeActiveHeadingAtY = (y: number): number => {
 };
 
 const computeActiveHeading = (): number => {
-  return computeActiveHeadingAtY(milkRoot.scrollTop + 10);
+  return computeActiveHeadingAtY(activeMilkRoot.scrollTop + 10);
 };
 
 const reportActiveHeading = (index: number) => {
@@ -529,14 +638,18 @@ const reportActiveHeading = (index: number) => {
   });
 };
 
-milkRoot.addEventListener('scroll', () => {
+const handleMilkRootScroll = (event: Event) => {
+  if (event.currentTarget !== activeMilkRoot) {
+    return;
+  }
+
   if (activeHeadingRafId) {
     return;
   }
 
   activeHeadingRafId = requestAnimationFrame(() => {
     activeHeadingRafId = 0;
-    const currentScrollTop = milkRoot.scrollTop;
+    const currentScrollTop = activeMilkRoot.scrollTop;
     const scrollingDown = currentScrollTop >= prevScrollTop;
     prevScrollTop = currentScrollTop;
 
@@ -549,15 +662,26 @@ milkRoot.addEventListener('scroll', () => {
 
     reportActiveHeading(Math.max(scrollIndex, clickFloorIndex));
   });
-});
+};
 
-milkRoot.addEventListener('click', (event: MouseEvent) => {
-  const rect = milkRoot.getBoundingClientRect();
-  const clickY = event.clientY - rect.top + milkRoot.scrollTop;
+const handleMilkRootClick = (event: MouseEvent) => {
+  if (event.currentTarget !== activeMilkRoot) {
+    return;
+  }
+
+  const rect = activeMilkRoot.getBoundingClientRect();
+  const clickY = event.clientY - rect.top + activeMilkRoot.scrollTop;
   const index = computeActiveHeadingAtY(clickY);
   clickFloorIndex = index;
   reportActiveHeading(index);
-});
+};
+
+const bindMilkRootInteractions = (root: HTMLDivElement) => {
+  root.addEventListener('scroll', handleMilkRootScroll);
+  root.addEventListener('click', handleMilkRootClick);
+};
+
+bindMilkRootInteractions(activeMilkRoot);
 
 const insertAtCursor = (textarea: HTMLTextAreaElement, insertion: string) => {
   const start = textarea.selectionStart;
@@ -625,6 +749,7 @@ const handleHostCommand = (command: HostCommand) => {
       return;
     case 'SetTitle':
       titleTextEl.textContent = command.content ?? 'Untitled.md';
+      updateTransitionCopy();
       return;
     case 'SetLanguage':
       applyLanguage(command.content ?? 'en-US');
