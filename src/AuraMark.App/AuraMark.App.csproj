@@ -20,6 +20,19 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
   </ItemGroup>
 
+  <ItemGroup>
+    <FrontendSource Include="..\AuraMark.Web\src\**\*" />
+    <FrontendSource Include="..\AuraMark.Web\public\**\*" />
+    <FrontendSource Include="..\AuraMark.Web\index.html" />
+    <FrontendSource Include="..\AuraMark.Web\package.json" />
+    <FrontendSource Include="..\AuraMark.Web\package-lock.json" />
+    <FrontendSource Include="..\AuraMark.Web\tsconfig.json" />
+    <FrontendSource Include="..\AuraMark.Web\vite.config.ts" />
+
+    <UpToDateCheckInput Include="@(FrontendSource)" Set="Frontend" />
+    <UpToDateCheckBuilt Include="$(OutDir)EditorView\index.html" Set="Frontend" />
+  </ItemGroup>
+
   <!-- Build frontend with Vite and copy dist into output folder -->
   <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition=" '$(CI)' != 'true' ">
     <Message Text="Building AuraMark.Web..." Importance="high" />
@@ -31,6 +44,7 @@
     <ItemGroup>
       <FrontendDist Include="..\AuraMark.Web\dist\**\*" />
     </ItemGroup>
+    <RemoveDir Directories="$(OutDir)EditorView" />
     <Copy SourceFiles="@(FrontendDist)"
           DestinationFiles="@(FrontendDist->'$(OutDir)EditorView\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
