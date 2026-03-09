@@ -104,6 +104,30 @@ public partial class MainWindow
         Dispatcher.InvokeAsync(FocusSourceEditor, DispatcherPriority.ApplicationIdle);
     }
 
+    private void ApplyE2eSourceModeProbe()
+    {
+        if (!_e2eSourceModePending && string.IsNullOrWhiteSpace(_e2eSourceAppendText))
+        {
+            return;
+        }
+
+        _e2eSourceModePending = false;
+        ApplySourceModeState(true);
+
+        if (!string.IsNullOrWhiteSpace(_e2eSourceAppendText))
+        {
+            var lineEnding = DetectSourceLineEnding(SourceTextEditor.Text);
+            var prefix = SourceTextEditor.Text.Length == 0 || SourceTextEditor.Text.EndsWith(lineEnding, StringComparison.Ordinal)
+                ? string.Empty
+                : lineEnding;
+            var addition = prefix + _e2eSourceAppendText;
+            ReplaceSourceRange(SourceTextEditor.Text.Length, 0, addition, addition.Length, addition.Length);
+            _e2eSourceAppendText = string.Empty;
+        }
+
+        FocusSourceEditorDeferred();
+    }
+
     private void SetSourceEditorText(string markdown, bool clearUndoStack)
     {
         var nextText = markdown ?? string.Empty;

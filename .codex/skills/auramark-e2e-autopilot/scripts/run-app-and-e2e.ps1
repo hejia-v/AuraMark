@@ -253,17 +253,25 @@ Initial content before external update.
 "@ | Set-Content -Path $externalPath -Encoding UTF8
 
     $readonlyPath = Join-Path $Root "readonly.md"
-    @"
+@"
 # Readonly Case
 
 This file is readonly. E2E should click Save and show a soft save error plus retry.
 "@ | Set-Content -Path $readonlyPath -Encoding UTF8
     (Get-Item -LiteralPath $readonlyPath).IsReadOnly = $true
 
+    $sourceModePath = Join-Path $Root "source-mode.md"
+@"
+# Source Mode
+
+Host-side source editor should append deterministic text and save it back to disk.
+"@ | Set-Content -Path $sourceModePath -Encoding UTF8
+
     return [ordered]@{
         large = $largeFilePath
         external = $externalPath
         readonly = $readonlyPath
+        source = $sourceModePath
     }
 }
 
@@ -409,6 +417,28 @@ function Move-MouseAcrossWindow {
     [User32]::SetCursorPos($endX, $endY) | Out-Null
 }
 
+function Wait-UntilFileContains {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Needle,
+        [int]$TimeoutSeconds = 8
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $Path) {
+            $content = Get-Content -Raw -Path $Path -ErrorAction SilentlyContinue
+            if ($content -and $content.IndexOf($Needle, [System.StringComparison]::Ordinal) -ge 0) {
+                return $true
+            }
+        }
+
+        Start-Sleep -Milliseconds 200
+    }
+
+    return $false
+}
+
 Add-User32Interop
 
 $shouldSkipUiChecks = $SkipUiChecks
@@ -543,6 +573,42 @@ Updated by run-app-and-e2e at $(Get-Date -Format "s").
                 $result.ui_checks += [ordered]@{ case = "case6"; name = "UnsavedChangesDialog"; ok = $true }
                 if (-not $shouldSkipScreenshots) {
                     Add-Checkpoint -Handle $promptHandle -CaseId "case6" -Checkpoint "unsaved_changes_prompt" -Seq 1
+                }
+            }
+            finally {
+                Stop-AuraMarkSession -Session $session
+            }
+
+            Write-Section "Case7: Source mode edit + save"
+            $sourceAppendToken = "<!-- E2E source mode append -->"
+            $session = Start-AuraMarkSession -LaunchArguments @(
+                "--e2e-open", $fixtures.source,
+                "--e2e-source-mode",
+                "--e2e-source-append", $sourceAppendToken) -SkipUiChecks:$true -CaseId "case7"
+            try {
+                Start-Sleep -Milliseconds 1200
+                if (-not $shouldSkipUiChecks) {
+                    try {
+                        Assert-UiElementPresent -Root $session.root -AutomationId "SourceModeToggleButton"
+                        $result.ui_checks += [ordered]@{ case = "case7"; name = "SourceModeToggleButton"; ok = $true }
+                    }
+                    catch {
+                        $result.ui_checks += [ordered]@{ case = "case7"; name = "SourceModeToggleButton"; ok = $false; note = $_.Exception.Message }
+                    }
+                }
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case7" -Checkpoint "source_mode_ready" -Seq 1
+                }
+
+                Invoke-ButtonByAutomationId -Root $session.root -AutomationId "SaveFileButton"
+                $saved = Wait-UntilFileContains -Path $fixtures.source -Needle $sourceAppendToken -TimeoutSeconds 8
+                if (-not $saved) {
+                    throw "Source mode content was not persisted to disk."
+                }
+                $result.ui_checks += [ordered]@{ case = "case7"; name = "SourceModeSavedContent"; ok = $true }
+
+                if (-not $shouldSkipScreenshots) {
+                    Add-Checkpoint -Handle $session.handle -CaseId "case7" -Checkpoint "source_mode_saved" -Seq 2
                 }
             }
             finally {

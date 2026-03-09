@@ -29,15 +29,20 @@ public static partial class TextLayoutPreserver
         var preferredLineEnding = DetectPreferredLineEnding(originalLines);
         var builder = new StringBuilder(Math.Max(safeOriginal.Length, safeEdited.Length));
 
-        foreach (var operation in operations)
+        for (var operationIndex = 0; operationIndex < operations.Count; operationIndex++)
         {
+            var operation = operations[operationIndex];
             switch (operation.Kind)
             {
                 case DiffKind.Equal:
                     builder.Append(originalLines[operation.OriginalIndex].Raw);
                     break;
                 case DiffKind.Delete:
-                    if (IsBlankComparableLine(originalLines[operation.OriginalIndex].Normalized))
+                    if (ShouldPreserveDeletedBlankLine(
+                            operations,
+                            operationIndex,
+                            originalLines,
+                            editedLines))
                     {
                         builder.Append(originalLines[operation.OriginalIndex].Raw);
                     }
@@ -48,7 +53,7 @@ public static partial class TextLayoutPreserver
             }
         }
 
-        return builder.ToString();
+        return RemoveRedundantBlankLinesBeforeStructuralMarkers(builder.ToString());
     }
 
     private static string NormalizeLineEndings(string text)
@@ -177,6 +182,86 @@ public static partial class TextLayoutPreserver
     private static bool IsBlankComparableLine(string line)
     {
         return string.IsNullOrWhiteSpace(NormalizeComparableLine(line));
+    }
+
+    private static bool ShouldPreserveDeletedBlankLine(
+        IReadOnlyList<DiffOperation> operations,
+        int operationIndex,
+        IReadOnlyList<RawLineToken> originalLines,
+        IReadOnlyList<string> editedLines)
+    {
+        var operation = operations[operationIndex];
+        if (!IsBlankComparableLine(originalLines[operation.OriginalIndex].Normalized))
+        {
+            return false;
+        }
+
+        return !HasAdjacentFormattingOnlyInsert(operations, operationIndex, editedLines);
+    }
+
+    private static bool HasAdjacentFormattingOnlyInsert(
+        IReadOnlyList<DiffOperation> operations,
+        int operationIndex,
+        IReadOnlyList<string> editedLines)
+    {
+        for (var direction = -1; direction <= 1; direction += 2)
+        {
+            for (var index = operationIndex + direction; index >= 0 && index < operations.Count; index += direction)
+            {
+                var operation = operations[index];
+                if (operation.Kind == DiffKind.Equal)
+                {
+                    break;
+                }
+
+                if (operation.Kind == DiffKind.Insert &&
+                    IsFormattingOnlyComparableLine(editedLines[operation.EditedIndex]))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsFormattingOnlyComparableLine(string line)
+    {
+        var normalized = NormalizeComparableLine(line);
+        if (normalized.EndsWith('\n'))
+        {
+            normalized = normalized[..^1];
+        }
+
+        normalized = normalized.Trim();
+        return StructuralMarkerOnlyRegex().IsMatch(normalized);
+    }
+
+    private static string RemoveRedundantBlankLinesBeforeStructuralMarkers(string text)
+    {
+        var lines = TokenizeRawLines(text);
+        if (lines.Count == 0)
+        {
+            return text;
+        }
+
+        var builder = new StringBuilder(text.Length);
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var current = lines[index];
+            var previousIsBlank = index > 0 && IsBlankComparableLine(lines[index - 1].Normalized);
+            var nextIsMarkerOnly = index + 1 < lines.Count && IsFormattingOnlyComparableLine(lines[index + 1].Normalized);
+            if (IsBlankComparableLine(current.Normalized) &&
+                !previousIsBlank &&
+                nextIsMarkerOnly)
+            {
+                continue;
+            }
+
+            builder.Append(current.Raw);
+        }
+
+        return builder.ToString();
     }
 
     private static string NormalizeComparableLine(string line)
@@ -337,4 +422,7 @@ public static partial class TextLayoutPreserver
 
     [GeneratedRegex(@"^(\s*(?:[-+*]|\d+[.)]))\s+<br\s*/?>\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex PlaceholderBreakRegex();
+
+    [GeneratedRegex(@"^(?:[-+*]|1[.)]|>)$", RegexOptions.Compiled)]
+    private static partial Regex StructuralMarkerOnlyRegex();
 }

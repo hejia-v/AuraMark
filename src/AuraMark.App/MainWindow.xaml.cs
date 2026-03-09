@@ -197,6 +197,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _e2eStartupPending;
     private bool _e2eForceImmersive;
     private bool _e2eImmersiveApplied;
+    private bool _e2eSourceModePending;
+    private string _e2eSourceAppendText = string.Empty;
     private bool _suppressFileTreeSelectionLoad;
     private bool _webViewWarmed;
     private string _e2eOpenFilePath = string.Empty;
@@ -1015,6 +1017,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _e2eMode = true;
                 break;
             }
+        }
+
+        _e2eSourceModePending = args.Any(arg => arg.Equals("--e2e-source-mode", StringComparison.OrdinalIgnoreCase));
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i].Equals("--e2e-source-append", StringComparison.OrdinalIgnoreCase) &&
+                i + 1 < args.Length)
+            {
+                _e2eSourceAppendText = args[i + 1];
+                _e2eMode = true;
+                break;
+            }
+        }
+
+        if (_e2eSourceModePending || !string.IsNullOrWhiteSpace(_e2eSourceAppendText))
+        {
+            _e2eMode = true;
         }
 
         _e2eForceImmersive = args.Any(arg => arg.Equals("--e2e-force-immersive", StringComparison.OrdinalIgnoreCase));
@@ -3262,6 +3281,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _e2eImmersiveApplied = true;
                 Dispatcher.InvokeAsync(EnterImmersiveMode, DispatcherPriority.Background);
+            }
+
+            if (_e2eSourceModePending || !string.IsNullOrWhiteSpace(_e2eSourceAppendText))
+            {
+                Dispatcher.InvokeAsync(ApplyE2eSourceModeProbe, DispatcherPriority.Background);
             }
 
             return;

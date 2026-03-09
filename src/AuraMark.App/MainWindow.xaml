@@ -1242,6 +1242,22 @@
                                   Data="M10.3,4.3 L18,12 L10.3,19.7 L8.9,18.3 L15.2,12 L8.9,5.7 Z" />
                         </Button>
 
+                        <Button x:Name="SaveFileButton"
+                                Width="24"
+                                Padding="0"
+                                Margin="0,0,6,0"
+                                Style="{StaticResource TopBarActionButtonStyle}"
+                                Click="OnSaveNowClicked"
+                                ToolTip="Save (Ctrl+S)"
+                                AutomationProperties.AutomationId="SaveFileButton"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <Path Width="13"
+                                  Height="13"
+                                  Stretch="Uniform"
+                                  Fill="#738196"
+                                  Data="M5 2a2 2 0 0 0-2 2v16h18V6.828a2 2 0 0 0-.586-1.414l-2.828-2.828A2 2 0 0 0 16.172 2zm0 2h10v4H5zm0 6h14v8H5zm2 2v4h6v-4z" />
+                        </Button>
+
                         <Button x:Name="QuickOpenButton"
                                 Style="{StaticResource QuickOpenButtonStyle}"
                                 Click="OnQuickOpenButtonClicked"
@@ -1989,6 +2005,7 @@
                         BorderThickness="0"
                         CornerRadius="0">
                     <avalonEdit:TextEditor x:Name="SourceTextEditor"
+                                           AutomationProperties.AutomationId="SourceTextEditor"
                                            ShowLineNumbers="True"
                                            FontFamily="Cascadia Mono, Consolas"
                                            FontSize="15"
