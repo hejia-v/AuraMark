@@ -75,7 +75,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static readonly string SettingsFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AuraMark", "settings.json");
-
     // Path data extracted from res/sprites-core-symbols/0623c1.svg (generic file/document)
     private const string FileIconPathData =
         "M15.169 6.5c0-.711-.001-1.204-.033-1.588a2.4 2.4 0 0 0-.112-.615l-.055-.13a1.84 1.84 0 0 0-.676-.731l-.126-.07c-.158-.081-.37-.138-.745-.169-.384-.031-.877-.032-1.588-.032H8.167c-.711 0-1.205 0-1.588.032-.376.031-.587.088-.745.168a1.84 1.84 0 0 0-.802.802c-.08.158-.137.37-.168.745-.031.384-.032.877-.032 1.588v7c0 .711 0 1.204.032 1.588.03.376.087.587.168.745l.07.126c.177.288.43.522.732.676l.13.056c.143.052.333.089.615.112.383.031.877.032 1.588.032h3.667c.71 0 1.204 0 1.588-.032.375-.031.587-.088.745-.168l.126-.07c.287-.177.522-.43.676-.732l.055-.13c.052-.144.09-.333.113-.615.03-.384.032-.877.032-1.588zm1.33 7c0 .69 0 1.246-.037 1.696-.033.4-.097.762-.241 1.098l-.068.142c-.265.522-.669.958-1.165 1.262l-.218.122c-.376.192-.782.271-1.24.309-.45.037-1.007.036-1.696.036H8.167c-.69 0-1.246 0-1.697-.036-.4-.033-.76-.098-1.097-.242l-.143-.067a3.17 3.17 0 0 1-1.261-1.165l-.123-.219c-.191-.376-.27-.782-.308-1.24-.037-.45-.036-1.007-.036-1.696v-7c0-.69 0-1.246.036-1.696.037-.458.117-.864.308-1.24A3.17 3.17 0 0 1 5.23 2.18c.377-.192.783-.271 1.24-.309.45-.037 1.008-.036 1.697-.036h3.667c.689 0 1.246 0 1.696.036.458.038.864.117 1.24.309l.218.122c.496.304.9.74 1.165 1.261l.068.143c.144.336.208.697.24 1.098.038.45.038 1.007.038 1.696z";
@@ -218,6 +217,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static string ToLanguageCode(AppLanguage language)
     {
         return language == AppLanguage.Chinese ? "zh-CN" : "en-US";
+    }
+
+    private static async Task<string> ReadUtf8TextAsync(string path)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 8192, useAsync: true);
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return await reader.ReadToEndAsync();
     }
 
     private string Text(string key)
@@ -2468,12 +2474,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
-        string markdown;
-        await using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 8192, useAsync: true))
-        using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
-        {
-            markdown = await reader.ReadToEndAsync();
-        }
+        var markdown = await ReadUtf8TextAsync(path);
 
         if (loadVersion != Volatile.Read(ref _documentLoadVersion))
         {
@@ -2780,21 +2781,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var savePath = _currentFilePath;
         var markdownToSave = _pendingMarkdown;
+        var mergedMarkdownToSave = TextLayoutPreserver.MergePreservingLayout(_currentMarkdown, markdownToSave);
         _isSaving = true;
         SetState(EditorState.Saving);
 
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? ".");
-            await File.WriteAllTextAsync(savePath, markdownToSave, Encoding.UTF8);
-            _ignoreWatcherUntilUtc = DateTime.UtcNow.AddMilliseconds(1200);
+            if (!string.Equals(mergedMarkdownToSave, _currentMarkdown, StringComparison.Ordinal))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(savePath) ?? ".");
+                await using var stream = new FileStream(savePath, FileMode.Create, FileAccess.Write, FileShare.Read, 8192, useAsync: true);
+                await using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+                await writer.WriteAsync(mergedMarkdownToSave);
+                await writer.FlushAsync();
+                _ignoreWatcherUntilUtc = DateTime.UtcNow.AddMilliseconds(1200);
+            }
 
             var isCurrentSaveContext =
                 savePath.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(markdownToSave, _pendingMarkdown, StringComparison.Ordinal);
             if (isCurrentSaveContext)
             {
-                _currentMarkdown = markdownToSave;
+                _currentMarkdown = mergedMarkdownToSave;
+                _pendingMarkdown = mergedMarkdownToSave;
                 _dirty = false;
                 _pendingSaveRetryContent = string.Empty;
                 HideError();
@@ -2893,12 +2902,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        string diskMarkdown;
-        await using (var stream = new FileStream(_currentFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 8192, useAsync: true))
-        using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
-        {
-            diskMarkdown = await reader.ReadToEndAsync();
-        }
+        var diskMarkdown = await ReadUtf8TextAsync(_currentFilePath);
 
         if (diskMarkdown == _pendingMarkdown)
         {

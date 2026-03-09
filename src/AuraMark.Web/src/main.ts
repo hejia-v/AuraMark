@@ -1,6 +1,6 @@
 import './style.css';
 import 'prismjs/themes/prism.css';
-import { Editor, defaultValueCtx, editorViewCtx, prosePluginsCtx, rootCtx } from '@milkdown/core';
+import { Editor, defaultValueCtx, editorViewCtx, prosePluginsCtx, remarkPluginsCtx, remarkStringifyOptionsCtx, rootCtx } from '@milkdown/core';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { prism } from '@milkdown/plugin-prism';
 import { commonmark } from '@milkdown/preset-commonmark';
@@ -10,6 +10,9 @@ import { history, redo, redoDepth, undo, undoDepth } from 'prosemirror-history';
 import { createCodeBlockView, configureCodeBlockPrism, notifyCodeBlockLocaleChange } from './codeBlockEnhancements';
 import { DocumentPayload, composeRawMarkdown, createRawDocument, parseIncomingDocument, parseRawDocument } from './documentPayload';
 import { HostCommand, IpcErrorPayload, WebMessagePayload, onHostMessage, sendToHost } from './ipc';
+import { patchMarkdownStructurePreservingLayout, patchMarkdownTextPreservingLayout } from './markdownPatch';
+import { createMarkdownAstNormalizationPlugin } from './markdownAstNormalization';
+import { normalizeSerializedMarkdown } from './normalizeSerializedMarkdown';
 
 const host = document.getElementById('app');
 if (!host) {
@@ -529,6 +532,14 @@ const renderEditor = async (document: DocumentPayload, sequence: number) => {
           ctx.set(rootCtx, nextFrame.editorRoot);
           ctx.set(defaultValueCtx, document.bodyMarkdown);
           ctx.update(prosePluginsCtx, (plugins) => [...plugins, history()]);
+          ctx.update(remarkPluginsCtx, (plugins) => [...plugins, createMarkdownAstNormalizationPlugin]);
+          ctx.update(remarkStringifyOptionsCtx, (options) => ({
+            ...options,
+            bullet: '-',
+            bulletOther: '+',
+            incrementListMarker: true,
+            listItemIndent: 'one',
+          }));
         })
         .use(nord)
         .use(commonmark)
@@ -552,15 +563,29 @@ const renderEditor = async (document: DocumentPayload, sequence: number) => {
       }
 
       const listeners = nextEditor.ctx.get(listenerCtx);
-      listeners.markdownUpdated((_ctx, markdownText) => {
-        const nextDocument = updateCurrentDocumentBody(markdownText);
-        sourceEditor.value = nextDocument.rawMarkdown;
-        updateDirtyDot();
-        reportHistoryState();
-
+      listeners.markdownUpdated((_ctx, markdownText, previousMarkdownText) => {
         if (suppressOutbound || inputFrozen) {
           return;
         }
+
+        const normalizedPreviousMarkdown = normalizeSerializedMarkdown(previousMarkdownText);
+        const normalizedMarkdown = normalizeSerializedMarkdown(markdownText);
+        const patchedBodyMarkdown =
+          patchMarkdownTextPreservingLayout(
+            currentDocument.bodyMarkdown,
+            normalizedPreviousMarkdown,
+            normalizedMarkdown,
+          ) ??
+          patchMarkdownStructurePreservingLayout(
+            currentDocument.bodyMarkdown,
+            normalizedPreviousMarkdown,
+            normalizedMarkdown,
+          ) ??
+          normalizedMarkdown;
+        const nextDocument = updateCurrentDocumentBody(patchedBodyMarkdown);
+        sourceEditor.value = nextDocument.rawMarkdown;
+        updateDirtyDot();
+        reportHistoryState();
 
         sendUpdate(nextDocument.rawMarkdown);
       });
