@@ -588,13 +588,12 @@
 
         <Style x:Key="TopBarToggleButtonStyle" TargetType="ToggleButton">
             <Setter Property="Height" Value="24" />
-            <Setter Property="MinWidth" Value="54" />
-            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Padding" Value="10,0" />
             <Setter Property="Margin" Value="0,0,10,0" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="#CDD6E1" />
-            <Setter Property="Background" Value="#FAFBFC" />
-            <Setter Property="Foreground" Value="#455264" />
+            <Setter Property="BorderBrush" Value="#DCE4EE" />
+            <Setter Property="Background" Value="#F5F7FA" />
+            <Setter Property="Foreground" Value="#5C6B80" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -603,18 +602,21 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="7">
+                                CornerRadius="12">
                             <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center" />
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#FFFFFF" />
-                                <Setter TargetName="Bg" Property="BorderBrush" Value="#B9C5D2" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#C2D0E2" />
+                                <Setter Property="Foreground" Value="#455264" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bg" Property="Background" Value="#EDF2F7" />
-                                <Setter TargetName="Bg" Property="BorderBrush" Value="#AEBCCB" />
+                                <Setter TargetName="Bg" Property="Background" Value="#E8F1FF" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#95AED3" />
+                                <Setter Property="Foreground" Value="#345A89" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="Bg" Property="Background" Value="#E8F1FF" />
@@ -629,7 +631,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-
         <Style x:Key="QuickOpenResultItemStyle" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0,0,0,4" />
