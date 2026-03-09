@@ -94,6 +94,17 @@ export const parseEditorActionRequest = (content: string | undefined): EditorAct
 };
 
 export const createEditorActionController = (env: EditorActionEnvironment) => {
+  const focusRichEditor = () => {
+    const view = env.getEditorView();
+    if (!view) {
+      return null;
+    }
+
+    view.focus();
+    view.dom.focus();
+    return view;
+  };
+
   const reportStates = () => {
     const ctx: ActionStateContext = {
       sourceMode: env.isSourceMode(),
@@ -140,7 +151,7 @@ export const createEditorActionController = (env: EditorActionEnvironment) => {
         ? definition.runSource(env, request.args)
         : false
       : definition.isSupportedInRich && definition.runRich
-        ? await definition.runRich(env, request.args)
+        ? (focusRichEditor(), await definition.runRich(env, request.args))
         : false;
 
     queueMicrotask(() => {
