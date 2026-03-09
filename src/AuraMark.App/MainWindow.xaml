@@ -586,6 +586,50 @@
             </Setter>
         </Style>
 
+        <Style x:Key="TopBarToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Height" Value="24" />
+            <Setter Property="MinWidth" Value="54" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#CDD6E1" />
+            <Setter Property="Background" Value="#FAFBFC" />
+            <Setter Property="Foreground" Value="#455264" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bg"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#FFFFFF" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#B9C5D2" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#EDF2F7" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#AEBCCB" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#E8F1FF" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="#95AED3" />
+                                <Setter Property="Foreground" Value="#345A89" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="QuickOpenResultItemStyle" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="0" />
             <Setter Property="Margin" Value="0,0,0,4" />
@@ -1344,6 +1388,18 @@
                                   Fill="#738196"
                                   Data="M11 2a1 1 0 0 1 1 1v1.05a8.001 8.001 0 0 1 6.95 6.95H20a1 1 0 1 1 0 2h-1.05a8.001 8.001 0 0 1-6.95 6.95V21a1 1 0 1 1-2 0v-1.05a8.001 8.001 0 0 1-6.95-6.95H2a1 1 0 1 1 0-2h1.05a8.001 8.001 0 0 1 6.95-6.95V3a1 1 0 0 1 1-1m0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12m0 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6" />
                         </Button>
+
+                        <ToggleButton x:Name="SourceModeToggleButton"
+                                      Style="{StaticResource TopBarToggleButtonStyle}"
+                                      Click="OnSourceModeToggleButtonClicked"
+                                      ToolTip="Markdown source"
+                                      AutomationProperties.AutomationId="SourceModeToggleButton"
+                                      shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                            <TextBlock x:Name="SourceModeToggleButtonText"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Text="Source" />
+                        </ToggleButton>
 
                         <Popup x:Name="QuickOpenPopup"
                                PlacementTarget="{Binding ElementName=QuickOpenButton}"

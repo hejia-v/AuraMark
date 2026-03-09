@@ -211,6 +211,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private int? _pendingOpenFileHistoryIndex;
     private bool _canUndo;
     private bool _canRedo;
+    private bool _isSourceMode;
     private AppLanguage _currentLanguage = GetDefaultLanguage();
     private AppLanguage _pendingLanguage = GetDefaultLanguage();
 
@@ -229,6 +230,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DataContext = this;
         BuildEditorActionMenus();
         ApplyLanguage();
+        UpdateSourceModeToggleUi();
         UpdateOpenFileHistoryButtons();
         UpdateUndoRedoControls();
 
@@ -476,6 +478,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "QuickOpenEmptyDefault") => "暂无可用文件。",
             (AppLanguage.Chinese, "QuickOpenEmptyQueryFormat") => "没有匹配“{0}”的结果。",
             (AppLanguage.Chinese, "MarkdownSourceLabel") => "Markdown 源码",
+            (AppLanguage.Chinese, "RichEditorLabel") => "编辑",
+            (AppLanguage.Chinese, "SourceEditorLabel") => "源码",
+            (AppLanguage.Chinese, "SourceModeToggleRichTooltip") => "切换到可视编辑模式",
+            (AppLanguage.Chinese, "SourceModeToggleSourceTooltip") => "切换到 Markdown 源码模式",
             (AppLanguage.Chinese, "UnsavedChangesTooltip") => "存在未保存的更改",
             (AppLanguage.English, "MenuFile") => "File",
             (AppLanguage.English, "MenuNew") => "New",
@@ -581,6 +587,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "QuickOpenEmptyDefault") => "No files available.",
             (AppLanguage.English, "QuickOpenEmptyQueryFormat") => "No matches for \"{0}\".",
             (AppLanguage.English, "MarkdownSourceLabel") => "Markdown source",
+            (AppLanguage.English, "RichEditorLabel") => "Rich",
+            (AppLanguage.English, "SourceEditorLabel") => "Source",
+            (AppLanguage.English, "SourceModeToggleRichTooltip") => "Switch to rich editor",
+            (AppLanguage.English, "SourceModeToggleSourceTooltip") => "Switch to Markdown source mode",
             (AppLanguage.English, "UnsavedChangesTooltip") => "Unsaved changes",
             _ => key,
         };
@@ -636,6 +646,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         QuickOpenButtonText.Text = Text("QuickOpenButtonLabel");
         QuickOpenPlaceholderText.Text = Text("QuickOpenPlaceholder");
         SyncConflictText.Text = Text("SyncConflictPrompt");
+        UpdateSourceModeToggleUi();
 
         if (!_isDocumentRendering && LoadingOverlay.Visibility != Visibility.Visible)
         {
@@ -875,6 +886,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         ApplyEditorActionMenuStates();
+    }
+
+    private void SetSourceModeState(bool enabled)
+    {
+        _isSourceMode = enabled;
+        UpdateSourceModeToggleUi();
+    }
+
+    private void UpdateSourceModeToggleUi()
+    {
+        if (SourceModeToggleButton is null || SourceModeToggleButtonText is null)
+        {
+            return;
+        }
+
+        SourceModeToggleButton.IsChecked = _isSourceMode;
+        SourceModeToggleButtonText.Text = _isSourceMode
+            ? Text("RichEditorLabel")
+            : Text("SourceEditorLabel");
+        SourceModeToggleButton.ToolTip = _isSourceMode
+            ? Text("SourceModeToggleRichTooltip")
+            : Text("SourceModeToggleSourceTooltip");
     }
 
     private void OpenSettingsDialog()
@@ -2331,6 +2364,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _lastMousePoint = current;
     }
 
+    private void OnSourceModeToggleButtonClicked(object sender, RoutedEventArgs e)
+    {
+        SendCommand(new HostCommand { Name = IpcCommands.ToggleSourceMode });
+    }
+
     private void OnTopBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed)
@@ -3244,6 +3282,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         else if (command.Name.Equals(IpcCommands.EditorActionStateChanged, StringComparison.Ordinal))
         {
             HandleEditorActionStateChanged(command.Content ?? string.Empty);
+        }
+        else if (command.Name.Equals(IpcCommands.SourceModeChanged, StringComparison.Ordinal))
+        {
+            SetSourceModeState(command.Value == true);
         }
     }
 

@@ -27,6 +27,7 @@ export type HostCommand = {
     | 'SetTitle'
     | 'SetLanguage'
     | 'ExecuteEditorAction'
+    | 'SourceModeChanged'
     | 'ActiveHeadingChanged'
     | 'HistoryStateChanged'
     | 'EditorActionStateChanged';

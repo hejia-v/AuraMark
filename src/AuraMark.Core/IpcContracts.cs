@@ -36,6 +36,7 @@ public static class IpcCommands
     public const string SetTitle = "SetTitle";
     public const string SetLanguage = "SetLanguage";
     public const string ExecuteEditorAction = "ExecuteEditorAction";
+    public const string SourceModeChanged = "SourceModeChanged";
     public const string ActiveHeadingChanged = "ActiveHeadingChanged";
     public const string HistoryStateChanged = "HistoryStateChanged";
     public const string EditorActionStateChanged = "EditorActionStateChanged";

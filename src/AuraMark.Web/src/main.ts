@@ -250,6 +250,14 @@ const sendActionStateChanged = (snapshot: unknown) => {
   });
 };
 
+const sendSourceModeChanged = () => {
+  sendToHost({
+    type: 'Command',
+    content: JSON.stringify({ name: 'SourceModeChanged', value: sourceMode }),
+    timestamp: Date.now(),
+  });
+};
+
 const updateDirtyDot = () => {
   const dirty = currentMarkdown !== savedMarkdown;
   dotEl.className = 'doc-status-dot' + (dirty ? ' state-dirty' : '');
@@ -666,6 +674,7 @@ const setSourceMode = (enabled: boolean) => {
   }
 
   scheduleReportEditorActionStates();
+  sendSourceModeChanged();
 };
 
 const setInputFrozen = (frozen: boolean) => {
@@ -1075,4 +1084,5 @@ window.addEventListener('keydown', (event) => {
 setStatus('Waiting host init...');
 applyLanguage(uiLanguage);
 scheduleReportEditorActionStates();
+sendSourceModeChanged();
 sendAck('Ready');
