@@ -8,6 +8,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows;
@@ -39,6 +40,44 @@ namespace AuraMark.App;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    private sealed class EditorActionMenuDefinition
+    {
+        public required string HeaderKey { get; init; }
+        public string? ActionId { get; init; }
+        public string? StateId { get; init; }
+        public IReadOnlyDictionary<string, object?>? Args { get; init; }
+        public string? Shortcut { get; init; }
+        public bool IsCheckable { get; init; }
+        public bool IsSeparator { get; init; }
+        public IReadOnlyList<EditorActionMenuDefinition>? Children { get; init; }
+    }
+
+    private sealed class EditorActionMenuBinding
+    {
+        public required string Id { get; init; }
+        public required string StateId { get; init; }
+        public IReadOnlyDictionary<string, object?>? Args { get; init; }
+        public string? Shortcut { get; init; }
+    }
+
+    private sealed class ExecuteEditorActionPayload
+    {
+        public required string Id { get; init; }
+        public IReadOnlyDictionary<string, object?>? Args { get; init; }
+    }
+
+    private sealed class EditorActionStateSnapshot
+    {
+        public Dictionary<string, EditorActionState>? Actions { get; init; }
+    }
+
+    private sealed class EditorActionState
+    {
+        public bool Enabled { get; init; } = true;
+        public bool Active { get; init; }
+        public string? Shortcut { get; init; }
+    }
+
     private enum AppLanguage
     {
         Chinese,
@@ -53,6 +92,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _sidebarExpandedWidth = 280;
     private double _outlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
+    private static readonly JsonSerializerOptions EditorActionJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
     private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
     private static readonly Regex MarkdownHeadingRegex = new(@"^\s*#\s+(.+?)\s*$", RegexOptions.Compiled);
     private const int MaxRecentEntries = 25;
@@ -107,6 +150,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly ObservableCollection<QuickOpenEntry> _quickOpenEntries = [];
     private readonly List<QuickOpenEntry> _quickOpenSourceEntries = [];
     private readonly List<string> _openFileHistory = [];
+    private readonly Dictionary<string, List<MenuItem>> _editorActionMenuItems = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, EditorActionState> _editorActionStates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _editorActionShortcuts = CreateEditorActionShortcuts();
+    private readonly IReadOnlyList<EditorActionMenuDefinition> _paragraphMenuDefinitions = CreateParagraphMenuDefinitions();
+    private readonly IReadOnlyList<EditorActionMenuDefinition> _formatMenuDefinitions = CreateFormatMenuDefinitions();
 
     private CoreWebView2? _webViewCore;
     private FileSystemWatcher? _fileWatcher;
@@ -179,6 +227,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         Title = "AuraMark";
         DataContext = this;
+        BuildEditorActionMenus();
         ApplyLanguage();
         UpdateOpenFileHistoryButtons();
         UpdateUndoRedoControls();
@@ -219,6 +268,99 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return language == AppLanguage.Chinese ? "zh-CN" : "en-US";
     }
 
+    private static Dictionary<string, string> CreateEditorActionShortcuts()
+    {
+        return new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["paragraph.paragraph"] = "Ctrl+0",
+            ["paragraph.heading.1"] = "Ctrl+1",
+            ["paragraph.heading.2"] = "Ctrl+2",
+            ["paragraph.heading.3"] = "Ctrl+3",
+            ["paragraph.heading.4"] = "Ctrl+4",
+            ["paragraph.heading.5"] = "Ctrl+5",
+            ["paragraph.heading.6"] = "Ctrl+6",
+            ["paragraph.heading.increase"] = "Ctrl+Alt+]",
+            ["paragraph.heading.decrease"] = "Ctrl+Alt+[",
+            ["paragraph.quote"] = "Ctrl+Alt+Q",
+            ["paragraph.ordered-list"] = "Ctrl+Alt+7",
+            ["paragraph.unordered-list"] = "Ctrl+Alt+8",
+            ["paragraph.task-list"] = "Ctrl+Alt+9",
+            ["paragraph.code-fence"] = "Ctrl+Shift+K",
+            ["paragraph.math-block"] = "Ctrl+Alt+M",
+            ["paragraph.table"] = "Ctrl+Alt+T",
+            ["paragraph.footnote"] = "Ctrl+Alt+F",
+            ["paragraph.horizontal-rule"] = "Ctrl+Alt+H",
+            ["format.bold"] = "Ctrl+B",
+            ["format.italic"] = "Ctrl+I",
+            ["format.underline"] = "Ctrl+U",
+            ["format.strikethrough"] = "Ctrl+Alt+S",
+            ["format.inline-code"] = "Ctrl+Shift+`",
+            ["format.inline-math"] = "Ctrl+Alt+K",
+            ["format.link"] = "Ctrl+K",
+            ["format.image"] = "Ctrl+Shift+I",
+            ["format.highlight"] = "Ctrl+Shift+H",
+            ["format.superscript"] = "Ctrl+.",
+            ["format.subscript"] = "Ctrl+,",
+            ["format.clear"] = "Ctrl+\\",
+        };
+    }
+
+    private static IReadOnlyList<EditorActionMenuDefinition> CreateParagraphMenuDefinitions()
+    {
+        return
+        [
+            new() { HeaderKey = "ParagraphParagraph", ActionId = "paragraph.paragraph", Shortcut = "Ctrl+0", IsCheckable = true },
+            new()
+            {
+                HeaderKey = "ParagraphHeading",
+                Children =
+                [
+                    new() { HeaderKey = "ParagraphHeading1", ActionId = "paragraph.heading", StateId = "paragraph.heading.1", Args = new Dictionary<string, object?> { ["level"] = 1 }, Shortcut = "Ctrl+1", IsCheckable = true },
+                    new() { HeaderKey = "ParagraphHeading2", ActionId = "paragraph.heading", StateId = "paragraph.heading.2", Args = new Dictionary<string, object?> { ["level"] = 2 }, Shortcut = "Ctrl+2", IsCheckable = true },
+                    new() { HeaderKey = "ParagraphHeading3", ActionId = "paragraph.heading", StateId = "paragraph.heading.3", Args = new Dictionary<string, object?> { ["level"] = 3 }, Shortcut = "Ctrl+3", IsCheckable = true },
+                    new() { HeaderKey = "ParagraphHeading4", ActionId = "paragraph.heading", StateId = "paragraph.heading.4", Args = new Dictionary<string, object?> { ["level"] = 4 }, Shortcut = "Ctrl+4", IsCheckable = true },
+                    new() { HeaderKey = "ParagraphHeading5", ActionId = "paragraph.heading", StateId = "paragraph.heading.5", Args = new Dictionary<string, object?> { ["level"] = 5 }, Shortcut = "Ctrl+5", IsCheckable = true },
+                    new() { HeaderKey = "ParagraphHeading6", ActionId = "paragraph.heading", StateId = "paragraph.heading.6", Args = new Dictionary<string, object?> { ["level"] = 6 }, Shortcut = "Ctrl+6", IsCheckable = true },
+                ]
+            },
+            new() { HeaderKey = "ParagraphIncreaseHeading", ActionId = "paragraph.heading.increase", Shortcut = "Ctrl+Alt+]", IsCheckable = true },
+            new() { HeaderKey = "ParagraphDecreaseHeading", ActionId = "paragraph.heading.decrease", Shortcut = "Ctrl+Alt+[", IsCheckable = true },
+            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
+            new() { HeaderKey = "ParagraphQuote", ActionId = "paragraph.quote", Shortcut = "Ctrl+Alt+Q", IsCheckable = true },
+            new() { HeaderKey = "ParagraphOrderedList", ActionId = "paragraph.ordered-list", Shortcut = "Ctrl+Alt+7", IsCheckable = true },
+            new() { HeaderKey = "ParagraphUnorderedList", ActionId = "paragraph.unordered-list", Shortcut = "Ctrl+Alt+8", IsCheckable = true },
+            new() { HeaderKey = "ParagraphTaskList", ActionId = "paragraph.task-list", Shortcut = "Ctrl+Alt+9", IsCheckable = true },
+            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
+            new() { HeaderKey = "ParagraphCodeFence", ActionId = "paragraph.code-fence", Shortcut = "Ctrl+Shift+K", IsCheckable = true },
+            new() { HeaderKey = "ParagraphMathBlock", ActionId = "paragraph.math-block", Shortcut = "Ctrl+Alt+M" },
+            new() { HeaderKey = "ParagraphTable", ActionId = "paragraph.table", Shortcut = "Ctrl+Alt+T", IsCheckable = true },
+            new() { HeaderKey = "ParagraphFootnote", ActionId = "paragraph.footnote", Shortcut = "Ctrl+Alt+F" },
+            new() { HeaderKey = "ParagraphHorizontalRule", ActionId = "paragraph.horizontal-rule", Shortcut = "Ctrl+Alt+H" },
+        ];
+    }
+
+    private static IReadOnlyList<EditorActionMenuDefinition> CreateFormatMenuDefinitions()
+    {
+        return
+        [
+            new() { HeaderKey = "FormatBold", ActionId = "format.bold", Shortcut = "Ctrl+B", IsCheckable = true },
+            new() { HeaderKey = "FormatItalic", ActionId = "format.italic", Shortcut = "Ctrl+I", IsCheckable = true },
+            new() { HeaderKey = "FormatUnderline", ActionId = "format.underline", Shortcut = "Ctrl+U", IsCheckable = true },
+            new() { HeaderKey = "FormatStrikethrough", ActionId = "format.strikethrough", Shortcut = "Ctrl+Alt+S", IsCheckable = true },
+            new() { HeaderKey = "FormatInlineCode", ActionId = "format.inline-code", Shortcut = "Ctrl+Shift+`", IsCheckable = true },
+            new() { HeaderKey = "FormatInlineMath", ActionId = "format.inline-math", Shortcut = "Ctrl+Alt+K", IsCheckable = true },
+            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
+            new() { HeaderKey = "FormatLink", ActionId = "format.link", Shortcut = "Ctrl+K", IsCheckable = true },
+            new() { HeaderKey = "FormatImage", ActionId = "format.image", Shortcut = "Ctrl+Shift+I" },
+            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
+            new() { HeaderKey = "FormatHighlight", ActionId = "format.highlight", Shortcut = "Ctrl+Shift+H", IsCheckable = true },
+            new() { HeaderKey = "FormatSuperscript", ActionId = "format.superscript", Shortcut = "Ctrl+.", IsCheckable = true },
+            new() { HeaderKey = "FormatSubscript", ActionId = "format.subscript", Shortcut = "Ctrl+,", IsCheckable = true },
+            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
+            new() { HeaderKey = "FormatClear", ActionId = "format.clear", Shortcut = "Ctrl+\\" },
+        ];
+    }
+
     private static async Task<string> ReadUtf8TextAsync(string path)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 8192, useAsync: true);
@@ -238,11 +380,44 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.Chinese, "MenuSave") => "保存",
             (AppLanguage.Chinese, "MenuSettings") => "设置",
             (AppLanguage.Chinese, "MenuEdit") => "编辑",
+            (AppLanguage.Chinese, "MenuParagraph") => "段落",
+            (AppLanguage.Chinese, "MenuFormat") => "格式",
             (AppLanguage.Chinese, "MenuUndo") => "撤销",
             (AppLanguage.Chinese, "MenuRedo") => "重做",
             (AppLanguage.Chinese, "MenuView") => "视图",
             (AppLanguage.Chinese, "MenuToggleWorkspace") => "切换工作区",
             (AppLanguage.Chinese, "MenuToggleOutline") => "切换大纲",
+            (AppLanguage.Chinese, "ParagraphParagraph") => "段落",
+            (AppLanguage.Chinese, "ParagraphHeading") => "标题",
+            (AppLanguage.Chinese, "ParagraphHeading1") => "标题 1",
+            (AppLanguage.Chinese, "ParagraphHeading2") => "标题 2",
+            (AppLanguage.Chinese, "ParagraphHeading3") => "标题 3",
+            (AppLanguage.Chinese, "ParagraphHeading4") => "标题 4",
+            (AppLanguage.Chinese, "ParagraphHeading5") => "标题 5",
+            (AppLanguage.Chinese, "ParagraphHeading6") => "标题 6",
+            (AppLanguage.Chinese, "ParagraphIncreaseHeading") => "提升标题级别",
+            (AppLanguage.Chinese, "ParagraphDecreaseHeading") => "降低标题级别",
+            (AppLanguage.Chinese, "ParagraphQuote") => "引用",
+            (AppLanguage.Chinese, "ParagraphOrderedList") => "有序列表",
+            (AppLanguage.Chinese, "ParagraphUnorderedList") => "无序列表",
+            (AppLanguage.Chinese, "ParagraphTaskList") => "任务列表",
+            (AppLanguage.Chinese, "ParagraphCodeFence") => "代码块",
+            (AppLanguage.Chinese, "ParagraphMathBlock") => "数学块",
+            (AppLanguage.Chinese, "ParagraphTable") => "表格",
+            (AppLanguage.Chinese, "ParagraphFootnote") => "脚注",
+            (AppLanguage.Chinese, "ParagraphHorizontalRule") => "分隔线",
+            (AppLanguage.Chinese, "FormatBold") => "加粗",
+            (AppLanguage.Chinese, "FormatItalic") => "斜体",
+            (AppLanguage.Chinese, "FormatUnderline") => "下划线",
+            (AppLanguage.Chinese, "FormatStrikethrough") => "删除线",
+            (AppLanguage.Chinese, "FormatInlineCode") => "行内代码",
+            (AppLanguage.Chinese, "FormatInlineMath") => "行内公式",
+            (AppLanguage.Chinese, "FormatLink") => "链接",
+            (AppLanguage.Chinese, "FormatImage") => "图片",
+            (AppLanguage.Chinese, "FormatHighlight") => "高亮",
+            (AppLanguage.Chinese, "FormatSuperscript") => "上标",
+            (AppLanguage.Chinese, "FormatSubscript") => "下标",
+            (AppLanguage.Chinese, "FormatClear") => "清除格式",
             (AppLanguage.Chinese, "RecentEmpty") => "暂无最近项目",
             (AppLanguage.Chinese, "SettingsTitle") => "设置",
             (AppLanguage.Chinese, "SettingsSubtitle") => "配置应用语言。",
@@ -310,11 +485,44 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             (AppLanguage.English, "MenuSave") => "Save",
             (AppLanguage.English, "MenuSettings") => "Settings",
             (AppLanguage.English, "MenuEdit") => "Edit",
+            (AppLanguage.English, "MenuParagraph") => "Paragraph",
+            (AppLanguage.English, "MenuFormat") => "Format",
             (AppLanguage.English, "MenuUndo") => "Undo",
             (AppLanguage.English, "MenuRedo") => "Redo",
             (AppLanguage.English, "MenuView") => "View",
             (AppLanguage.English, "MenuToggleWorkspace") => "Toggle Workspace",
             (AppLanguage.English, "MenuToggleOutline") => "Toggle Outline",
+            (AppLanguage.English, "ParagraphParagraph") => "Paragraph",
+            (AppLanguage.English, "ParagraphHeading") => "Heading",
+            (AppLanguage.English, "ParagraphHeading1") => "Heading 1",
+            (AppLanguage.English, "ParagraphHeading2") => "Heading 2",
+            (AppLanguage.English, "ParagraphHeading3") => "Heading 3",
+            (AppLanguage.English, "ParagraphHeading4") => "Heading 4",
+            (AppLanguage.English, "ParagraphHeading5") => "Heading 5",
+            (AppLanguage.English, "ParagraphHeading6") => "Heading 6",
+            (AppLanguage.English, "ParagraphIncreaseHeading") => "Increase Heading Level",
+            (AppLanguage.English, "ParagraphDecreaseHeading") => "Decrease Heading Level",
+            (AppLanguage.English, "ParagraphQuote") => "Quote",
+            (AppLanguage.English, "ParagraphOrderedList") => "Ordered List",
+            (AppLanguage.English, "ParagraphUnorderedList") => "Unordered List",
+            (AppLanguage.English, "ParagraphTaskList") => "Task List",
+            (AppLanguage.English, "ParagraphCodeFence") => "Code Fence",
+            (AppLanguage.English, "ParagraphMathBlock") => "Math Block",
+            (AppLanguage.English, "ParagraphTable") => "Table",
+            (AppLanguage.English, "ParagraphFootnote") => "Footnote",
+            (AppLanguage.English, "ParagraphHorizontalRule") => "Horizontal Rule",
+            (AppLanguage.English, "FormatBold") => "Bold",
+            (AppLanguage.English, "FormatItalic") => "Italic",
+            (AppLanguage.English, "FormatUnderline") => "Underline",
+            (AppLanguage.English, "FormatStrikethrough") => "Strikethrough",
+            (AppLanguage.English, "FormatInlineCode") => "Inline Code",
+            (AppLanguage.English, "FormatInlineMath") => "Inline Math",
+            (AppLanguage.English, "FormatLink") => "Link",
+            (AppLanguage.English, "FormatImage") => "Image",
+            (AppLanguage.English, "FormatHighlight") => "Highlight",
+            (AppLanguage.English, "FormatSuperscript") => "Superscript",
+            (AppLanguage.English, "FormatSubscript") => "Subscript",
+            (AppLanguage.English, "FormatClear") => "Clear Format",
             (AppLanguage.English, "RecentEmpty") => "No recent items",
             (AppLanguage.English, "SettingsTitle") => "Settings",
             (AppLanguage.English, "SettingsSubtitle") => "Configure the app language.",
@@ -393,6 +601,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         FileSaveMenuItem.Header = Text("MenuSave");
         FileSettingsMenuItem.Header = Text("MenuSettings");
         EditMenuRoot.Header = Text("MenuEdit");
+        ParagraphMenuRoot.Header = Text("MenuParagraph");
+        FormatMenuRoot.Header = Text("MenuFormat");
         UndoMenuItem.Header = Text("MenuUndo");
         RedoMenuItem.Header = Text("MenuRedo");
         ViewMenuRoot.Header = Text("MenuView");
@@ -442,6 +652,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         RefreshRecentMenu();
+        ApplyEditorActionMenuLocalization();
         ApplyQuickOpenFilter(QuickOpenSearchTextBox.Text);
         UpdateSettingsLanguageSelection();
         PushLanguageToWeb();
@@ -465,6 +676,205 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Name = IpcCommands.SetLanguage,
             Content = ToLanguageCode(_currentLanguage),
         });
+    }
+
+    private void BuildEditorActionMenus()
+    {
+        if (ParagraphMenuRoot is null || FormatMenuRoot is null)
+        {
+            return;
+        }
+
+        _editorActionMenuItems.Clear();
+        BuildEditorActionMenuRoot(ParagraphMenuRoot, _paragraphMenuDefinitions);
+        BuildEditorActionMenuRoot(FormatMenuRoot, _formatMenuDefinitions);
+        ApplyEditorActionMenuStates();
+    }
+
+    private void BuildEditorActionMenuRoot(MenuItem root, IReadOnlyList<EditorActionMenuDefinition> definitions)
+    {
+        root.Items.Clear();
+        foreach (var definition in definitions)
+        {
+            root.Items.Add(CreateEditorActionMenuObject(definition));
+        }
+    }
+
+    private object CreateEditorActionMenuObject(EditorActionMenuDefinition definition)
+    {
+        if (definition.IsSeparator)
+        {
+            return new Separator { Style = (Style)FindResource("MenuSeparatorStyle") };
+        }
+
+        var item = new MenuItem
+        {
+            Header = Text(definition.HeaderKey),
+            Style = (Style)FindResource("MenuItemStyle"),
+            InputGestureText = definition.Shortcut ?? string.Empty,
+            IsCheckable = definition.IsCheckable,
+            IsEnabled = definition.ActionId is null,
+            Tag = definition.ActionId is null
+                ? null
+                : new EditorActionMenuBinding
+                {
+                    Id = definition.ActionId,
+                    StateId = definition.StateId ?? definition.ActionId,
+                    Args = definition.Args,
+                    Shortcut = definition.Shortcut,
+                },
+        };
+
+        if (definition.ActionId is not null)
+        {
+            item.Click += OnEditorActionMenuItemClicked;
+            var stateId = definition.StateId ?? definition.ActionId;
+            if (!_editorActionMenuItems.TryGetValue(stateId, out var items))
+            {
+                items = [];
+                _editorActionMenuItems[stateId] = items;
+            }
+
+            items.Add(item);
+        }
+
+        if (definition.Children is not null)
+        {
+            foreach (var child in definition.Children)
+            {
+                item.Items.Add(CreateEditorActionMenuObject(child));
+            }
+        }
+
+        return item;
+    }
+
+    private void ApplyEditorActionMenuLocalization()
+    {
+        UpdateEditorActionMenuLocalization(_paragraphMenuDefinitions, ParagraphMenuRoot?.Items);
+        UpdateEditorActionMenuLocalization(_formatMenuDefinitions, FormatMenuRoot?.Items);
+    }
+
+    private void UpdateEditorActionMenuLocalization(
+        IReadOnlyList<EditorActionMenuDefinition> definitions,
+        ItemCollection? items)
+    {
+        if (items is null)
+        {
+            return;
+        }
+
+        var definitionIndex = 0;
+        foreach (var item in items)
+        {
+            if (definitionIndex >= definitions.Count)
+            {
+                break;
+            }
+
+            var definition = definitions[definitionIndex++];
+            if (definition.IsSeparator)
+            {
+                continue;
+            }
+
+            if (item is not MenuItem menuItem)
+            {
+                continue;
+            }
+
+            menuItem.Header = Text(definition.HeaderKey);
+            if (definition.ActionId is not null)
+            {
+                menuItem.InputGestureText = ResolveEditorActionShortcut(definition.StateId ?? definition.ActionId, definition.Shortcut);
+            }
+
+            if (definition.Children is not null)
+            {
+                UpdateEditorActionMenuLocalization(definition.Children, menuItem.Items);
+            }
+        }
+    }
+
+    private string ResolveEditorActionShortcut(string actionId, string? fallback)
+    {
+        return _editorActionShortcuts.TryGetValue(actionId, out var shortcut) && !string.IsNullOrWhiteSpace(shortcut)
+            ? shortcut
+            : fallback ?? string.Empty;
+    }
+
+    private void ApplyEditorActionMenuStates()
+    {
+        foreach (var (actionId, items) in _editorActionMenuItems)
+        {
+            var state = _editorActionStates.TryGetValue(actionId, out var current)
+                ? current
+                : new EditorActionState
+                {
+                    Enabled = false,
+                    Active = false,
+                };
+            var shortcut = ResolveEditorActionShortcut(actionId, items.FirstOrDefault()?.InputGestureText);
+            foreach (var item in items)
+            {
+                item.IsEnabled = state.Enabled;
+                item.IsChecked = item.IsCheckable && state.Active;
+                item.InputGestureText = shortcut;
+            }
+        }
+    }
+
+    private void RequestEditorAction(string actionId, IReadOnlyDictionary<string, object?>? args = null)
+    {
+        if (_inputFrozen)
+        {
+            return;
+        }
+
+        var payload = new ExecuteEditorActionPayload
+        {
+            Id = actionId,
+            Args = args,
+        };
+
+        SendCommand(new HostCommand
+        {
+            Name = IpcCommands.ExecuteEditorAction,
+            Content = JsonSerializer.Serialize(payload, EditorActionJsonOptions),
+        });
+    }
+
+    private void OnEditorActionMenuItemClicked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: EditorActionMenuBinding binding })
+        {
+            return;
+        }
+
+        RequestEditorAction(binding.Id, binding.Args);
+    }
+
+    private void HandleEditorActionStateChanged(string json)
+    {
+        try
+        {
+            var snapshot = JsonSerializer.Deserialize<EditorActionStateSnapshot>(json, _jsonOptions);
+            _editorActionStates.Clear();
+            foreach (var (actionId, state) in snapshot?.Actions ?? [])
+            {
+                _editorActionStates[actionId] = state;
+                if (!string.IsNullOrWhiteSpace(state.Shortcut))
+                {
+                    _editorActionShortcuts[actionId] = state.Shortcut;
+                }
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        ApplyEditorActionMenuStates();
     }
 
     private void OpenSettingsDialog()
@@ -822,6 +1232,120 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         SendCommand(new HostCommand { Name = IpcCommands.Redo });
+    }
+
+    private bool TryHandleEditorActionShortcut(ModifierKeys modifiers, Key key)
+    {
+        if (_inputFrozen)
+        {
+            return false;
+        }
+
+        if (modifiers == ModifierKeys.Control)
+        {
+            if (key is >= Key.D0 and <= Key.D6)
+            {
+                if (key == Key.D0)
+                {
+                    RequestEditorAction("paragraph.paragraph");
+                    return true;
+                }
+
+                RequestEditorAction(
+                    "paragraph.heading",
+                    new Dictionary<string, object?> { ["level"] = key - Key.D0 });
+                return true;
+            }
+
+            switch (key)
+            {
+                case Key.B:
+                    RequestEditorAction("format.bold");
+                    return true;
+                case Key.I:
+                    RequestEditorAction("format.italic");
+                    return true;
+                case Key.U:
+                    RequestEditorAction("format.underline");
+                    return true;
+                case Key.K:
+                    RequestEditorAction("format.link");
+                    return true;
+                case Key.OemPeriod:
+                    RequestEditorAction("format.superscript");
+                    return true;
+                case Key.OemComma:
+                    RequestEditorAction("format.subscript");
+                    return true;
+                case Key.Oem5:
+                    RequestEditorAction("format.clear");
+                    return true;
+            }
+        }
+
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            switch (key)
+            {
+                case Key.K:
+                    RequestEditorAction("paragraph.code-fence");
+                    return true;
+                case Key.Oem3:
+                    RequestEditorAction("format.inline-code");
+                    return true;
+                case Key.I:
+                    RequestEditorAction("format.image");
+                    return true;
+                case Key.H:
+                    RequestEditorAction("format.highlight");
+                    return true;
+            }
+        }
+
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Alt))
+        {
+            switch (key)
+            {
+                case Key.Oem6:
+                    RequestEditorAction("paragraph.heading.increase");
+                    return true;
+                case Key.Oem4:
+                    RequestEditorAction("paragraph.heading.decrease");
+                    return true;
+                case Key.Q:
+                    RequestEditorAction("paragraph.quote");
+                    return true;
+                case Key.D7:
+                    RequestEditorAction("paragraph.ordered-list");
+                    return true;
+                case Key.D8:
+                    RequestEditorAction("paragraph.unordered-list");
+                    return true;
+                case Key.D9:
+                    RequestEditorAction("paragraph.task-list");
+                    return true;
+                case Key.M:
+                    RequestEditorAction("paragraph.math-block");
+                    return true;
+                case Key.T:
+                    RequestEditorAction("paragraph.table");
+                    return true;
+                case Key.F:
+                    RequestEditorAction("paragraph.footnote");
+                    return true;
+                case Key.H:
+                    RequestEditorAction("paragraph.horizontal-rule");
+                    return true;
+                case Key.S:
+                    RequestEditorAction("format.strikethrough");
+                    return true;
+                case Key.K:
+                    RequestEditorAction("format.inline-math");
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsLocalTextInputFocused()
@@ -1731,6 +2255,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.Z))
             {
                 RequestRedo();
+                e.Handled = true;
+                return;
+            }
+
+            if (TryHandleEditorActionShortcut(modifiers, e.Key))
+            {
                 e.Handled = true;
                 return;
             }
@@ -2710,6 +3240,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         else if (command.Name.Equals(IpcCommands.HistoryStateChanged, StringComparison.Ordinal))
         {
             SetHistoryAvailability(command.CanUndo == true, command.CanRedo == true);
+        }
+        else if (command.Name.Equals(IpcCommands.EditorActionStateChanged, StringComparison.Ordinal))
+        {
+            HandleEditorActionStateChanged(command.Content ?? string.Empty);
         }
     }
 
@@ -3862,6 +4396,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _webReady = false;
         _editorInitialized = false;
         ResetHistoryAvailability();
+        _editorActionStates.Clear();
+        ApplyEditorActionMenuStates();
 
         if (uri.Scheme.Equals("about", StringComparison.OrdinalIgnoreCase))
         {

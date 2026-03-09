@@ -9,6 +9,7 @@ import { nord } from '@milkdown/theme-nord';
 import { history, redo, redoDepth, undo, undoDepth } from 'prosemirror-history';
 import { createCodeBlockView, configureCodeBlockPrism, notifyCodeBlockLocaleChange } from './codeBlockEnhancements';
 import { DocumentPayload, composeRawMarkdown, createRawDocument, parseIncomingDocument, parseRawDocument } from './documentPayload';
+import { createEditorActionController, parseEditorActionRequest } from './editorActions';
 import { HostCommand, IpcErrorPayload, WebMessagePayload, onHostMessage, sendToHost } from './ipc';
 import { patchMarkdownStructurePreservingLayout, patchMarkdownTextPreservingLayout } from './markdownPatch';
 import { createMarkdownAstNormalizationPlugin } from './markdownAstNormalization';
@@ -134,6 +135,7 @@ let pendingSourceInputType = '';
 let uiLanguage = 'en-US';
 let transitionTimer = 0;
 let transitionMode: 'opening' | 'switching' = 'opening';
+let actionStateRafId = 0;
 
 const localize = (key: 'markdownSource' | 'unsavedChanges') => {
   const chinese = uiLanguage.toLowerCase().startsWith('zh');
@@ -236,6 +238,14 @@ const sendHistoryState = (canUndo: boolean, canRedo: boolean) => {
   sendToHost({
     type: 'Command',
     content: JSON.stringify({ name: 'HistoryStateChanged', canUndo, canRedo }),
+    timestamp: Date.now(),
+  });
+};
+
+const sendActionStateChanged = (snapshot: unknown) => {
+  sendToHost({
+    type: 'Command',
+    content: JSON.stringify({ name: 'EditorActionStateChanged', content: JSON.stringify(snapshot) }),
     timestamp: Date.now(),
   });
 };
@@ -511,6 +521,18 @@ const commitSourceEditorMutation = (inputType: string, mutate: () => void) => {
   updateDirtyDot();
   reportHistoryState();
 };
+let editorActions: ReturnType<typeof createEditorActionController>;
+
+const scheduleReportEditorActionStates = () => {
+  if (actionStateRafId) {
+    return;
+  }
+
+  actionStateRafId = requestAnimationFrame(() => {
+    actionStateRafId = 0;
+    editorActions.reportStates();
+  });
+};
 
 const renderEditor = async (document: DocumentPayload, sequence: number) => {
   renderQueue = renderQueue
@@ -586,6 +608,7 @@ const renderEditor = async (document: DocumentPayload, sequence: number) => {
         sourceEditor.value = nextDocument.rawMarkdown;
         updateDirtyDot();
         reportHistoryState();
+        scheduleReportEditorActionStates();
 
         sendUpdate(nextDocument.rawMarkdown);
       });
@@ -624,6 +647,7 @@ const renderEditor = async (document: DocumentPayload, sequence: number) => {
 
       reportActiveHeading(computeActiveHeading());
       reportHistoryState();
+      scheduleReportEditorActionStates();
     });
 
   await renderQueue;
@@ -640,6 +664,8 @@ const setSourceMode = (enabled: boolean) => {
   } else {
     void applyRemoteDocument(parseRawDocument(sourceEditor.value), true);
   }
+
+  scheduleReportEditorActionStates();
 };
 
 const setInputFrozen = (frozen: boolean) => {
@@ -678,6 +704,7 @@ const applyRemoteDocument = async (document: DocumentPayload, fromSourceToggle =
     } else {
       reportHistoryState();
     }
+    scheduleReportEditorActionStates();
 
     setStatus(inputFrozen ? 'Synced (input frozen)' : 'Editing');
     sendAck('Rendered');
@@ -688,6 +715,22 @@ const applyRemoteDocument = async (document: DocumentPayload, fromSourceToggle =
     }
   }
 };
+
+editorActions = createEditorActionController({
+  getEditor: () => editor,
+  getEditorView,
+  getCurrentDocument: () => currentDocument,
+  getCurrentMarkdown: () => currentMarkdown,
+  getUiLanguage: () => uiLanguage,
+  isSourceMode: () => sourceMode,
+  isInputFrozen: () => inputFrozen,
+  sourceEditor,
+  commitSourceEditorMutation,
+  applyRemoteDocument,
+  parseRawDocument,
+  reportHistoryState,
+  sendActionStateChanged,
+});
 
 const parseCommand = (content: string): HostCommand | null => {
   try {
@@ -883,7 +926,17 @@ const handleHostCommand = (command: HostCommand) => {
       return;
     case 'SetLanguage':
       applyLanguage(command.content ?? 'en-US');
+      scheduleReportEditorActionStates();
       return;
+    case 'ExecuteEditorAction': {
+      const request = parseEditorActionRequest(command.content);
+      if (request) {
+        void editorActions.execute(request);
+      } else {
+        scheduleReportEditorActionStates();
+      }
+      return;
+    }
     case 'ToggleSidebar':
       sendToHost({
         type: 'Command',
@@ -930,6 +983,17 @@ sourceEditor.addEventListener('input', () => {
   sendUpdate(currentDocument.rawMarkdown);
   updateDirtyDot();
   reportHistoryState();
+  scheduleReportEditorActionStates();
+});
+
+sourceEditor.addEventListener('select', scheduleReportEditorActionStates);
+sourceEditor.addEventListener('keyup', scheduleReportEditorActionStates);
+sourceEditor.addEventListener('mouseup', scheduleReportEditorActionStates);
+
+document.addEventListener('selectionchange', () => {
+  if (!sourceMode) {
+    scheduleReportEditorActionStates();
+  }
 });
 
 window.addEventListener('keydown', (event) => {
@@ -975,7 +1039,7 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-onHostMessage((payload: WebMessagePayload) => {
+  onHostMessage((payload: WebMessagePayload) => {
   if (payload.type === 'Init') {
     initialized = true;
     void applyRemoteDocument(parseIncomingDocument(payload.content || ''));
@@ -994,6 +1058,7 @@ onHostMessage((payload: WebMessagePayload) => {
     savedMarkdown = currentDocument.rawMarkdown;
     updateDirtyDot();
     reportHistoryState();
+    scheduleReportEditorActionStates();
     return;
   }
 
@@ -1009,4 +1074,5 @@ onHostMessage((payload: WebMessagePayload) => {
 
 setStatus('Waiting host init...');
 applyLanguage(uiLanguage);
+scheduleReportEditorActionStates();
 sendAck('Ready');

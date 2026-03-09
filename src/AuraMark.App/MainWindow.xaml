@@ -864,6 +864,57 @@
                 </Trigger>
 
                 <!-- 下拉菜单项 -->
+                <Trigger Property="Role" Value="TopLevelItem">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Grid>
+                                    <Border x:Name="Bg"
+                                            CornerRadius="6"
+                                            Padding="10,4"
+                                            Background="Transparent">
+                                        <ContentPresenter ContentSource="Header"
+                                                          RecognizesAccessKey="True"
+                                                          VerticalAlignment="Center" />
+                                    </Border>
+                                    <Popup x:Name="PART_Popup"
+                                           IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Placement="Bottom"
+                                           VerticalOffset="4"
+                                           AllowsTransparency="True"
+                                           Focusable="False"
+                                           PopupAnimation="Fade">
+                                        <Border Margin="4,0,6,8"
+                                                Background="#FFFFFF"
+                                                BorderBrush="#DDE3EC"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                MinWidth="188"
+                                                Padding="4">
+                                            <Border.Effect>
+                                                <DropShadowEffect Color="#000000"
+                                                                  Opacity="0.10"
+                                                                  BlurRadius="18"
+                                                                  ShadowDepth="4"
+                                                                  Direction="270" />
+                                            </Border.Effect>
+                                            <ItemsPresenter />
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="#EEF1F5" />
+                                    </Trigger>
+                                    <Trigger Property="IsSubmenuOpen" Value="True">
+                                        <Setter TargetName="Bg" Property="Background" Value="#E4EAF2" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+
                 <Trigger Property="Role" Value="SubmenuItem">
                     <Setter Property="Template">
                         <Setter.Value>
@@ -875,13 +926,24 @@
                                         Margin="0,1">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="16" />
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="CheckGlyph"
+                                                   Width="12"
+                                                   Margin="0,0,6,0"
+                                                   Text="✓"
+                                                   Foreground="#6B7C93"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Opacity="0" />
                                         <ContentPresenter ContentSource="Header"
+                                                          Grid.Column="1"
                                                           RecognizesAccessKey="True"
                                                           VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1"
+                                        <TextBlock Grid.Column="2"
                                                    Margin="24,0,2,0"
                                                    Text="{TemplateBinding InputGestureText}"
                                                    Foreground="#9AA4B0"
@@ -892,6 +954,9 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsHighlighted" Value="True">
                                         <Setter TargetName="Bg" Property="Background" Value="#EEF1F5" />
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="CheckGlyph" Property="Opacity" Value="1" />
                                     </Trigger>
                                     <Trigger Property="IsEnabled" Value="False">
                                         <Setter Property="Foreground" Value="#B0BAC6" />
@@ -1059,6 +1124,8 @@
                                   IsEnabled="False"
                                   Click="OnRedoClicked" />
                     </MenuItem>
+                    <MenuItem x:Name="ParagraphMenuRoot" Header="Paragraph" Style="{StaticResource MenuItemStyle}" />
+                    <MenuItem x:Name="FormatMenuRoot" Header="Format" Style="{StaticResource MenuItemStyle}" />
                     <MenuItem x:Name="ViewMenuRoot" Header="View" Style="{StaticResource MenuItemStyle}">
                         <MenuItem x:Name="ViewToggleWorkspaceMenuItem" Header="Toggle Workspace"
                                   Style="{StaticResource MenuItemStyle}"

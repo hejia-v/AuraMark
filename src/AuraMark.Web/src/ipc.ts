@@ -26,8 +26,10 @@ export type HostCommand = {
     | 'InsertCodeBlock'
     | 'SetTitle'
     | 'SetLanguage'
+    | 'ExecuteEditorAction'
     | 'ActiveHeadingChanged'
-    | 'HistoryStateChanged';
+    | 'HistoryStateChanged'
+    | 'EditorActionStateChanged';
   content?: string;
   index?: number;
   value?: boolean;

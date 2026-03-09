@@ -184,6 +184,9 @@ Build configuration: $Configuration
 | 4. External hot reload | Open any .md in fixture; edit same file externally and save | Editor content updates automatically | [ ] Pass / [ ] Fail |
 | 5. Save failure hint | Open readonly.md; type and press Ctrl+S | Soft error appears with retry hint; editing remains available | [ ] Pass / [ ] Fail |
 | 6. Close with unsaved changes | Open any editable file; type without saving; close app | A prompt offers Save / Discard / Cancel, and Cancel keeps the app open | [ ] Pass / [ ] Fail |
+| 7. Paragraph menu actions | Use title bar Paragraph menu in rich mode and source mode for heading/list/quote/table/hr | Menu items trigger expected markdown structures and state checkmarks update | [ ] Pass / [ ] Fail |
+| 8. Format menu actions | Use title bar Format menu in rich mode and source mode for bold/italic/strike/link/image/clear | Inline formatting is inserted or toggled correctly, and clear format preserves block structure | [ ] Pass / [ ] Fail |
+| 9. Editor shortcuts | Verify Ctrl+B / Ctrl+I / Ctrl+U / Ctrl+1..6 / Ctrl+0 and added Alt combos | Shortcuts trigger editor actions without breaking Ctrl+N/O/S/P | [ ] Pass / [ ] Fail |
 
 ## Notes
 - Remember to clear readonly flag after test:
