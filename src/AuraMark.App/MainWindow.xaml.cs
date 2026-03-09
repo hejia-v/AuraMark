@@ -228,6 +228,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         Title = "AuraMark";
         DataContext = this;
+        InitializeSourceEditor();
         BuildEditorActionMenus();
         ApplyLanguage();
         UpdateSourceModeToggleUi();
@@ -842,6 +843,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (_isSourceMode)
+        {
+            TryExecuteSourceEditorAction(actionId, args);
+            return;
+        }
+
         var payload = new ExecuteEditorActionPayload
         {
             Id = actionId,
@@ -890,8 +897,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void SetSourceModeState(bool enabled)
     {
-        _isSourceMode = enabled;
-        UpdateSourceModeToggleUi();
+        ApplySourceModeState(enabled);
     }
 
     private void UpdateSourceModeToggleUi()
@@ -1254,6 +1260,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (_isSourceMode)
+        {
+            SourceTextEditor.Undo();
+            UpdateSourceHistoryAvailability();
+            UpdateSourceEditorActionStates();
+            return;
+        }
+
         SendCommand(new HostCommand { Name = IpcCommands.Undo });
     }
 
@@ -1261,6 +1275,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (!_canRedo || _inputFrozen)
         {
+            return;
+        }
+
+        if (_isSourceMode)
+        {
+            SourceTextEditor.Redo();
+            UpdateSourceHistoryAvailability();
+            UpdateSourceEditorActionStates();
             return;
         }
 
@@ -2343,7 +2365,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (modifiers == ModifierKeys.Control && e.Key == Key.Oem2)
         {
-            SendCommand(new HostCommand { Name = IpcCommands.ToggleSourceMode });
+            ToggleSourceMode();
             e.Handled = true;
             return;
         }
@@ -2366,7 +2388,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnSourceModeToggleButtonClicked(object sender, RoutedEventArgs e)
     {
-        SendCommand(new HostCommand { Name = IpcCommands.ToggleSourceMode });
+        ToggleSourceMode();
     }
 
     private void OnTopBarMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -3070,6 +3092,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _pendingMarkdown = markdown;
         _dirty = false;
         _inputFrozen = false;
+        UpdateSourceEditorReadOnly();
         _hasExternalConflict = false;
         _pendingExternalMarkdown = string.Empty;
 
@@ -3081,6 +3104,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         OutlineList.SelectedItem = null;
         _pendingOutlineScrollIndex = null;
         AttachFileWatcher(path);
+        SetSourceEditorText(markdown, clearUndoStack: true);
 
         QueueDocumentToWeb(markdown);
 
@@ -3251,6 +3275,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (_isSourceMode)
+        {
+            return;
+        }
+
         _pendingMarkdown = markdown;
         _dirty = true;
         UpdateOutline(markdown);
@@ -3271,21 +3300,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ToggleSidebar();
         }
-        else if (command.Name.Equals(IpcCommands.ActiveHeadingChanged, StringComparison.Ordinal))
+        else if (command.Name.Equals(IpcCommands.ActiveHeadingChanged, StringComparison.Ordinal) && !_isSourceMode)
         {
             SetActiveHeadingIndex(command.Index ?? -1);
         }
-        else if (command.Name.Equals(IpcCommands.HistoryStateChanged, StringComparison.Ordinal))
+        else if (command.Name.Equals(IpcCommands.HistoryStateChanged, StringComparison.Ordinal) && !_isSourceMode)
         {
             SetHistoryAvailability(command.CanUndo == true, command.CanRedo == true);
         }
-        else if (command.Name.Equals(IpcCommands.EditorActionStateChanged, StringComparison.Ordinal))
+        else if (command.Name.Equals(IpcCommands.EditorActionStateChanged, StringComparison.Ordinal) && !_isSourceMode)
         {
             HandleEditorActionStateChanged(command.Content ?? string.Empty);
-        }
-        else if (command.Name.Equals(IpcCommands.SourceModeChanged, StringComparison.Ordinal))
-        {
-            SetSourceModeState(command.Value == true);
         }
     }
 
@@ -3380,6 +3405,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _currentMarkdown = mergedMarkdownToSave;
                 _pendingMarkdown = mergedMarkdownToSave;
+                SetSourceEditorText(mergedMarkdownToSave, clearUndoStack: false);
                 _dirty = false;
                 _pendingSaveRetryContent = string.Empty;
                 HideError();
@@ -3507,6 +3533,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         SetState(EditorState.ExternalSync);
         _inputFrozen = true;
+        UpdateSourceEditorReadOnly();
         SendCommand(new HostCommand { Name = IpcCommands.FreezeInput });
 
         _currentMarkdown = markdown;
@@ -3514,10 +3541,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _dirty = false;
         SetSavingDot(false);
         UpdateOutline(markdown);
+        SetSourceEditorText(markdown, clearUndoStack: true);
         QueueDocumentToWeb(markdown);
 
         await Task.Delay(120);
         _inputFrozen = false;
+        UpdateSourceEditorReadOnly();
         SendCommand(new HostCommand { Name = IpcCommands.ResumeInput });
     }
 
@@ -3590,6 +3619,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _dirty = true;
             SetSavingDot(true);
             UpdateOutline(snapshotMarkdown);
+            SetSourceEditorText(snapshotMarkdown, clearUndoStack: true);
             QueueDocumentToWeb(snapshotMarkdown);
             SetState(EditorState.Dirty, "Recovered snapshot");
             ShowSoftError(Text("RecoveredSnapshotHint"));
@@ -3967,6 +3997,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (OutlineList.SelectedItem is not OutlineItem item)
         {
+            return;
+        }
+
+        if (_isSourceMode)
+        {
+            ScrollSourceEditorToHeading(item.Index);
+            OutlineList.SelectedItem = null;
             return;
         }
 
