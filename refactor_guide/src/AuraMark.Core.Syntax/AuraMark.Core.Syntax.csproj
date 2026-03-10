@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AuraMark.Core.Text\AuraMark.Core.Text.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.13.0" />
+  </ItemGroup>
+</Project>

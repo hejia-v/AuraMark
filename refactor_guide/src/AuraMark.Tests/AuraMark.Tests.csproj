@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AuraMark.Core.Text\AuraMark.Core.Text.csproj" />
+    <ProjectReference Include="..\AuraMark.Core.Syntax\AuraMark.Core.Syntax.csproj" />
+    <ProjectReference Include="..\AuraMark.Core.Editing\AuraMark.Core.Editing.csproj" />
+    <ProjectReference Include="..\AuraMark.Core.Layout\AuraMark.Core.Layout.csproj" />
+  </ItemGroup>
+</Project>
