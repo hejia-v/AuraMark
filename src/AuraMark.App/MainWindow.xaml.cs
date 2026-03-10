@@ -19,6 +19,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using AuraMark.App.Models;
 using AuraMark.Core;
+using AuraMark.Core.Syntax;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using System.Runtime.InteropServices;
@@ -35,49 +36,12 @@ using DragEventArgs = System.Windows.DragEventArgs;
 using Clipboard = System.Windows.Clipboard;
 using DataObject = System.Windows.DataObject;
 using DragDropEffects = System.Windows.DragDropEffects;
+using AppOutlineItem = AuraMark.App.Models.OutlineItem;
 
 namespace AuraMark.App;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private sealed class EditorActionMenuDefinition
-    {
-        public required string HeaderKey { get; init; }
-        public string? ActionId { get; init; }
-        public string? StateId { get; init; }
-        public IReadOnlyDictionary<string, object?>? Args { get; init; }
-        public string? Shortcut { get; init; }
-        public bool IsCheckable { get; init; }
-        public bool IsSeparator { get; init; }
-        public IReadOnlyList<EditorActionMenuDefinition>? Children { get; init; }
-    }
-
-    private sealed class EditorActionMenuBinding
-    {
-        public required string Id { get; init; }
-        public required string StateId { get; init; }
-        public IReadOnlyDictionary<string, object?>? Args { get; init; }
-        public string? Shortcut { get; init; }
-    }
-
-    private sealed class ExecuteEditorActionPayload
-    {
-        public required string Id { get; init; }
-        public IReadOnlyDictionary<string, object?>? Args { get; init; }
-    }
-
-    private sealed class EditorActionStateSnapshot
-    {
-        public Dictionary<string, EditorActionState>? Actions { get; init; }
-    }
-
-    private sealed class EditorActionState
-    {
-        public bool Enabled { get; init; } = true;
-        public bool Active { get; init; }
-        public string? Shortcut { get; init; }
-    }
-
     private enum AppLanguage
     {
         Chinese,
@@ -96,8 +60,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
-    private static readonly Regex HeadingRegex = new(@"^(#{1,6})\s+(.+?)\s*$", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex MarkdownHeadingRegex = new(@"^\s*#\s+(.+?)\s*$", RegexOptions.Compiled);
     private const int MaxRecentEntries = 25;
     private const int MaxOpenFileHistoryEntries = 100;
     private static readonly (string DirectoryName, string Label)[] SkillSources =
@@ -146,15 +108,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly DispatcherTimer _externalReloadTimer;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ObservableCollection<FileTreeNode> _fileTreeNodes = [];
-    private readonly ObservableCollection<OutlineItem> _outlineItems = [];
+    private readonly ObservableCollection<AppOutlineItem> _outlineItems = [];
     private readonly ObservableCollection<QuickOpenEntry> _quickOpenEntries = [];
+    private readonly MarkdownOutlineService _markdownOutlineService = new();
     private readonly List<QuickOpenEntry> _quickOpenSourceEntries = [];
     private readonly List<string> _openFileHistory = [];
     private readonly Dictionary<string, List<MenuItem>> _editorActionMenuItems = new(StringComparer.Ordinal);
     private readonly Dictionary<string, EditorActionState> _editorActionStates = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _editorActionShortcuts = CreateEditorActionShortcuts();
-    private readonly IReadOnlyList<EditorActionMenuDefinition> _paragraphMenuDefinitions = CreateParagraphMenuDefinitions();
-    private readonly IReadOnlyList<EditorActionMenuDefinition> _formatMenuDefinitions = CreateFormatMenuDefinitions();
+    private readonly Dictionary<string, string> _editorActionShortcuts = EditorActionCatalog.CreateShortcuts();
+    private readonly IReadOnlyList<EditorActionMenuDefinition> _paragraphMenuDefinitions = EditorActionCatalog.CreateParagraphMenuDefinitions();
+    private readonly IReadOnlyList<EditorActionMenuDefinition> _formatMenuDefinitions = EditorActionCatalog.CreateFormatMenuDefinitions();
 
     private CoreWebView2? _webViewCore;
     private FileSystemWatcher? _fileWatcher;
@@ -207,6 +170,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isDocumentRendering;
     private int? _pendingOutlineScrollIndex;
     private int _activeHeadingIndex = -1;
+    private MarkdownOutlineDocument _outlineDocument = MarkdownOutlineDocument.Empty;
     private int _quickOpenLoadVersion;
     private bool _isQuickOpenLoading;
     private int _openFileHistoryIndex = -1;
@@ -221,7 +185,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public ObservableCollection<FileTreeNode> FileTreeNodes => _fileTreeNodes;
 
-    public ObservableCollection<OutlineItem> OutlineItems => _outlineItems;
+    public ObservableCollection<AppOutlineItem> OutlineItems => _outlineItems;
 
     public ObservableCollection<QuickOpenEntry> QuickOpenEntries => _quickOpenEntries;
 
@@ -271,99 +235,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static string ToLanguageCode(AppLanguage language)
     {
         return language == AppLanguage.Chinese ? "zh-CN" : "en-US";
-    }
-
-    private static Dictionary<string, string> CreateEditorActionShortcuts()
-    {
-        return new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["paragraph.paragraph"] = "Ctrl+0",
-            ["paragraph.heading.1"] = "Ctrl+1",
-            ["paragraph.heading.2"] = "Ctrl+2",
-            ["paragraph.heading.3"] = "Ctrl+3",
-            ["paragraph.heading.4"] = "Ctrl+4",
-            ["paragraph.heading.5"] = "Ctrl+5",
-            ["paragraph.heading.6"] = "Ctrl+6",
-            ["paragraph.heading.increase"] = "Ctrl+Alt+]",
-            ["paragraph.heading.decrease"] = "Ctrl+Alt+[",
-            ["paragraph.quote"] = "Ctrl+Alt+Q",
-            ["paragraph.ordered-list"] = "Ctrl+Alt+7",
-            ["paragraph.unordered-list"] = "Ctrl+Alt+8",
-            ["paragraph.task-list"] = "Ctrl+Alt+9",
-            ["paragraph.code-fence"] = "Ctrl+Shift+K",
-            ["paragraph.math-block"] = "Ctrl+Alt+M",
-            ["paragraph.table"] = "Ctrl+Alt+T",
-            ["paragraph.footnote"] = "Ctrl+Alt+F",
-            ["paragraph.horizontal-rule"] = "Ctrl+Alt+H",
-            ["format.bold"] = "Ctrl+B",
-            ["format.italic"] = "Ctrl+I",
-            ["format.underline"] = "Ctrl+U",
-            ["format.strikethrough"] = "Ctrl+Alt+S",
-            ["format.inline-code"] = "Ctrl+Shift+`",
-            ["format.inline-math"] = "Ctrl+Alt+K",
-            ["format.link"] = "Ctrl+K",
-            ["format.image"] = "Ctrl+Shift+I",
-            ["format.highlight"] = "Ctrl+Shift+H",
-            ["format.superscript"] = "Ctrl+.",
-            ["format.subscript"] = "Ctrl+,",
-            ["format.clear"] = "Ctrl+\\",
-        };
-    }
-
-    private static IReadOnlyList<EditorActionMenuDefinition> CreateParagraphMenuDefinitions()
-    {
-        return
-        [
-            new() { HeaderKey = "ParagraphParagraph", ActionId = "paragraph.paragraph", Shortcut = "Ctrl+0", IsCheckable = true },
-            new()
-            {
-                HeaderKey = "ParagraphHeading",
-                Children =
-                [
-                    new() { HeaderKey = "ParagraphHeading1", ActionId = "paragraph.heading", StateId = "paragraph.heading.1", Args = new Dictionary<string, object?> { ["level"] = 1 }, Shortcut = "Ctrl+1", IsCheckable = true },
-                    new() { HeaderKey = "ParagraphHeading2", ActionId = "paragraph.heading", StateId = "paragraph.heading.2", Args = new Dictionary<string, object?> { ["level"] = 2 }, Shortcut = "Ctrl+2", IsCheckable = true },
-                    new() { HeaderKey = "ParagraphHeading3", ActionId = "paragraph.heading", StateId = "paragraph.heading.3", Args = new Dictionary<string, object?> { ["level"] = 3 }, Shortcut = "Ctrl+3", IsCheckable = true },
-                    new() { HeaderKey = "ParagraphHeading4", ActionId = "paragraph.heading", StateId = "paragraph.heading.4", Args = new Dictionary<string, object?> { ["level"] = 4 }, Shortcut = "Ctrl+4", IsCheckable = true },
-                    new() { HeaderKey = "ParagraphHeading5", ActionId = "paragraph.heading", StateId = "paragraph.heading.5", Args = new Dictionary<string, object?> { ["level"] = 5 }, Shortcut = "Ctrl+5", IsCheckable = true },
-                    new() { HeaderKey = "ParagraphHeading6", ActionId = "paragraph.heading", StateId = "paragraph.heading.6", Args = new Dictionary<string, object?> { ["level"] = 6 }, Shortcut = "Ctrl+6", IsCheckable = true },
-                ]
-            },
-            new() { HeaderKey = "ParagraphIncreaseHeading", ActionId = "paragraph.heading.increase", Shortcut = "Ctrl+Alt+]", IsCheckable = true },
-            new() { HeaderKey = "ParagraphDecreaseHeading", ActionId = "paragraph.heading.decrease", Shortcut = "Ctrl+Alt+[", IsCheckable = true },
-            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
-            new() { HeaderKey = "ParagraphQuote", ActionId = "paragraph.quote", Shortcut = "Ctrl+Alt+Q", IsCheckable = true },
-            new() { HeaderKey = "ParagraphOrderedList", ActionId = "paragraph.ordered-list", Shortcut = "Ctrl+Alt+7", IsCheckable = true },
-            new() { HeaderKey = "ParagraphUnorderedList", ActionId = "paragraph.unordered-list", Shortcut = "Ctrl+Alt+8", IsCheckable = true },
-            new() { HeaderKey = "ParagraphTaskList", ActionId = "paragraph.task-list", Shortcut = "Ctrl+Alt+9", IsCheckable = true },
-            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
-            new() { HeaderKey = "ParagraphCodeFence", ActionId = "paragraph.code-fence", Shortcut = "Ctrl+Shift+K", IsCheckable = true },
-            new() { HeaderKey = "ParagraphMathBlock", ActionId = "paragraph.math-block", Shortcut = "Ctrl+Alt+M" },
-            new() { HeaderKey = "ParagraphTable", ActionId = "paragraph.table", Shortcut = "Ctrl+Alt+T", IsCheckable = true },
-            new() { HeaderKey = "ParagraphFootnote", ActionId = "paragraph.footnote", Shortcut = "Ctrl+Alt+F" },
-            new() { HeaderKey = "ParagraphHorizontalRule", ActionId = "paragraph.horizontal-rule", Shortcut = "Ctrl+Alt+H" },
-        ];
-    }
-
-    private static IReadOnlyList<EditorActionMenuDefinition> CreateFormatMenuDefinitions()
-    {
-        return
-        [
-            new() { HeaderKey = "FormatBold", ActionId = "format.bold", Shortcut = "Ctrl+B", IsCheckable = true },
-            new() { HeaderKey = "FormatItalic", ActionId = "format.italic", Shortcut = "Ctrl+I", IsCheckable = true },
-            new() { HeaderKey = "FormatUnderline", ActionId = "format.underline", Shortcut = "Ctrl+U", IsCheckable = true },
-            new() { HeaderKey = "FormatStrikethrough", ActionId = "format.strikethrough", Shortcut = "Ctrl+Alt+S", IsCheckable = true },
-            new() { HeaderKey = "FormatInlineCode", ActionId = "format.inline-code", Shortcut = "Ctrl+Shift+`", IsCheckable = true },
-            new() { HeaderKey = "FormatInlineMath", ActionId = "format.inline-math", Shortcut = "Ctrl+Alt+K", IsCheckable = true },
-            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
-            new() { HeaderKey = "FormatLink", ActionId = "format.link", Shortcut = "Ctrl+K", IsCheckable = true },
-            new() { HeaderKey = "FormatImage", ActionId = "format.image", Shortcut = "Ctrl+Shift+I" },
-            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
-            new() { HeaderKey = "FormatHighlight", ActionId = "format.highlight", Shortcut = "Ctrl+Shift+H", IsCheckable = true },
-            new() { HeaderKey = "FormatSuperscript", ActionId = "format.superscript", Shortcut = "Ctrl+.", IsCheckable = true },
-            new() { HeaderKey = "FormatSubscript", ActionId = "format.subscript", Shortcut = "Ctrl+,", IsCheckable = true },
-            new() { HeaderKey = "MenuSeparator", IsSeparator = true },
-            new() { HeaderKey = "FormatClear", ActionId = "format.clear", Shortcut = "Ctrl+\\" },
-        ];
     }
 
     private static async Task<string> ReadUtf8TextAsync(string path)
@@ -2148,7 +2019,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return false;
     }
 
-    private static string ReadSkillDisplayName(string skillFilePath)
+    private string ReadSkillDisplayName(string skillFilePath)
     {
         var fallback = Path.GetFileName(Path.GetDirectoryName(skillFilePath) ?? skillFilePath);
 
@@ -2160,17 +2031,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 return NormalizeSkillDisplayName(metadataName, fallback);
             }
 
-            using var reader = new StringReader(document.BodyMarkdown);
-            string? line;
-            var scannedLines = 0;
-            while (scannedLines < 120 && (line = reader.ReadLine()) is not null)
+            var outline = _markdownOutlineService.ParseDocument(document.RawMarkdown);
+            var heading = outline.Headings.FirstOrDefault(item => item.Level == 1) ?? outline.Headings.FirstOrDefault();
+            if (heading is not null)
             {
-                scannedLines++;
-                var match = MarkdownHeadingRegex.Match(line);
-                if (match.Success)
-                {
-                    return NormalizeSkillDisplayName(match.Groups[1].Value, fallback);
-                }
+                return NormalizeSkillDisplayName(heading.Text, fallback);
             }
         }
         catch
@@ -3690,29 +3555,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateOutline(string markdown)
     {
         _outlineItems.Clear();
+        _outlineDocument = _markdownOutlineService.ParseDocument(markdown);
 
-        var index = 0;
-        var bodyMarkdown = FrontMatterParser.Parse(markdown).BodyMarkdown;
-        foreach (Match match in HeadingRegex.Matches(bodyMarkdown))
+        for (var index = 0; index < _outlineDocument.Headings.Count; index++)
         {
-            if (!match.Success)
-            {
-                continue;
-            }
+            var heading = _outlineDocument.Headings[index];
 
-            var level = match.Groups[1].Value.Length;
-            var title = match.Groups[2].Value.Trim();
-            if (title.Length == 0)
+            _outlineItems.Add(new AppOutlineItem
             {
-                continue;
-            }
-
-            _outlineItems.Add(new OutlineItem
-            {
-                Index = index++,
-                Level = level,
-                Text = title,
-                DisplayText = $"{new string(' ', (level - 1) * 2)}{title}",
+                Index = index,
+                Level = heading.Level,
+                Text = heading.Text,
+                DisplayText = $"{new string(' ', (heading.Level - 1) * 2)}{heading.Text}",
             });
         }
 
@@ -4019,7 +3873,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnOutlineSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (OutlineList.SelectedItem is not OutlineItem item)
+        if (OutlineList.SelectedItem is not AppOutlineItem item)
         {
             return;
         }
