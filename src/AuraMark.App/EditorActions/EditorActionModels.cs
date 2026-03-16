@@ -20,17 +20,6 @@ internal sealed class EditorActionMenuBinding
     public string? Shortcut { get; init; }
 }
 
-internal sealed class ExecuteEditorActionPayload
-{
-    public required string Id { get; init; }
-    public IReadOnlyDictionary<string, object?>? Args { get; init; }
-}
-
-internal sealed class EditorActionStateSnapshot
-{
-    public Dictionary<string, EditorActionState>? Actions { get; init; }
-}
-
 internal sealed class EditorActionState
 {
     public bool Enabled { get; init; } = true;

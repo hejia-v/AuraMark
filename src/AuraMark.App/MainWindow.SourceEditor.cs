@@ -1,11 +1,16 @@
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using AuraMark.Core.Editing;
+using AuraMark.Core.Text;
 
 namespace AuraMark.App;
 
 public partial class MainWindow
 {
+    private readonly MarkdownEditorReducer _sourceEditorActionReducer = new();
+    private readonly MarkdownEditorActionStateEvaluator _sourceEditorActionStateEvaluator = new();
     private bool _suppressSourceEditorUpdates;
 
     private void InitializeSourceEditor()
@@ -19,43 +24,28 @@ public partial class MainWindow
 
     private void ToggleSourceMode()
     {
-        ApplySourceModeState(!_isSourceMode);
+        ApplySourceModeState(true);
     }
 
     private void ApplySourceModeState(bool enabled)
     {
         if (_isSourceMode == enabled &&
-            WebViewHost.Visibility == (enabled ? Visibility.Collapsed : Visibility.Visible) &&
-            SourceEditorHost.Visibility == (enabled ? Visibility.Visible : Visibility.Collapsed))
+            SourceEditorHost.Visibility == Visibility.Visible)
         {
             UpdateSourceModeToggleUi();
             return;
         }
 
-        _isSourceMode = enabled;
-        WebViewHost.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
-        SourceEditorHost.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        _isSourceMode = true;
+        SourceEditorHost.Visibility = Visibility.Visible;
         SourceTextEditor.IsReadOnly = _inputFrozen;
         UpdateSourceModeToggleUi();
-
-        if (enabled)
-        {
-            SetSourceEditorText(_pendingMarkdown, clearUndoStack: false);
-            ShowLoading(false);
-            UpdateSourceHistoryAvailability();
-            UpdateSourceEditorActionStates();
-            UpdateSourceActiveHeading();
-            FocusSourceEditorDeferred();
-            return;
-        }
-
-        SetActiveHeadingIndex(-1);
-        _editorActionStates.Clear();
-        ApplyEditorActionMenuStates();
-        ResetHistoryAvailability();
-        ShowLoading(true, Text("Rendering"));
-        QueueDocumentToWeb(_pendingMarkdown);
-        Dispatcher.InvokeAsync(() => MainWebView.Focus(), DispatcherPriority.Background);
+        SetSourceEditorText(_pendingMarkdown, clearUndoStack: false);
+        ShowLoading(false);
+        UpdateSourceHistoryAvailability();
+        UpdateSourceEditorActionStates();
+        UpdateSourceActiveHeading();
+        FocusSourceEditorDeferred();
     }
 
     private void FocusSourceEditorDeferred()
@@ -185,9 +175,41 @@ public partial class MainWindow
 
     private bool TryExecuteSourceEditorAction(string actionId, IReadOnlyDictionary<string, object?>? args = null)
     {
-        _ = actionId;
-        _ = args;
-        return false;
+        var state = new MarkdownEditorState(
+            SourceTextEditor.Text,
+            TextSelection.FromStartAndLength(SourceTextEditor.SelectionStart, SourceTextEditor.SelectionLength));
+
+        if (!_sourceEditorActionReducer.TryReduce(state, new MarkdownEditorAction(actionId, args), out var result) ||
+            result is null)
+        {
+            return false;
+        }
+
+        var updatedMarkdown = ApplyMarkdownEditResult(state.Text, result);
+
+        _suppressSourceEditorUpdates = true;
+        try
+        {
+            SourceTextEditor.LoadText(updatedMarkdown, clearUndoStack: false);
+            SourceTextEditor.SetSelection(result.Selection.Start, result.Selection.Length);
+        }
+        finally
+        {
+            _suppressSourceEditorUpdates = false;
+        }
+
+        _pendingMarkdown = updatedMarkdown;
+        _dirty = !string.Equals(_currentMarkdown, updatedMarkdown, StringComparison.Ordinal);
+        UpdateOutline(updatedMarkdown);
+        SetState(_dirty ? EditorState.Dirty : EditorState.Editing);
+        SetSavingDot(_dirty);
+        HideError();
+        TrackTyping();
+        UpdateSourceHistoryAvailability();
+        UpdateSourceEditorActionStates();
+        UpdateSourceActiveHeading();
+        FocusSourceEditorDeferred();
+        return true;
     }
 
     private void UpdateSourceEditorActionStates()
@@ -197,14 +219,18 @@ public partial class MainWindow
             return;
         }
 
+        var snapshot = _sourceEditorActionStateEvaluator.Evaluate(
+            new MarkdownEditorState(
+                SourceTextEditor.Text,
+                TextSelection.FromStartAndLength(SourceTextEditor.SelectionStart, SourceTextEditor.SelectionLength)));
+
         _editorActionStates.Clear();
-        foreach (var descriptor in EditorActionCatalog.SourceActionDescriptors)
+        foreach (var (actionId, state) in SourceEditorActionStateFactory.Create(
+                     snapshot,
+                     enabled: !_inputFrozen,
+                     ResolveEditorActionShortcut))
         {
-            _editorActionStates[descriptor.StateId] = new EditorActionState
-            {
-                Enabled = false,
-                Shortcut = ResolveEditorActionShortcut(descriptor.StateId, descriptor.DefaultShortcut),
-            };
+            _editorActionStates[actionId] = state;
         }
 
         ApplyEditorActionMenuStates();
@@ -244,5 +270,17 @@ public partial class MainWindow
         SourceTextEditor.CaretOffset = headingOffset;
         SourceTextEditor.ScrollToOffset(headingOffset);
         SourceTextEditor.Focus();
+    }
+
+    private static string ApplyMarkdownEditResult(string originalText, MarkdownEditorEditResult result)
+    {
+        var builder = new StringBuilder(originalText);
+        foreach (var replacement in result.Replacements.OrderByDescending(item => item.Start))
+        {
+            builder.Remove(replacement.Start, replacement.Length);
+            builder.Insert(replacement.Start, replacement.NewText);
+        }
+
+        return builder.ToString();
     }
 }

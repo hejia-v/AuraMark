@@ -9,6 +9,7 @@ using AuraMark.Core.Layout;
 using AuraMark.Core.Syntax;
 using AuraMark.Core.Text;
 using Microsoft.CodeAnalysis.Text;
+
 using Brush = System.Windows.Media.Brush;
 using Clipboard = System.Windows.Clipboard;
 using CoreRedoAction = AuraMark.Core.Editing.RedoAction;

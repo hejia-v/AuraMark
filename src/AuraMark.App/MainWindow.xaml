@@ -4,7 +4,6 @@
         xmlns:models="clr-namespace:AuraMark.App.Models"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:app="clr-namespace:AuraMark.App"
-        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="AuraMark"
         Icon="app.ico"
         Width="1280"
@@ -1999,12 +1998,7 @@
             </Border>
 
             <Grid Grid.Column="1">
-                <Grid x:Name="WebViewHost">
-                    <wv2:WebView2 x:Name="MainWebView" />
-                </Grid>
-
                 <Border x:Name="SourceEditorHost"
-                        Visibility="Collapsed"
                         Background="#F8FAFC"
                         BorderBrush="#1A434C5E"
                         BorderThickness="0"
@@ -2286,7 +2280,7 @@
                 </Grid>
             </Border>
 
-            <!-- 使用 Popup 解决 WebView2 airspace 问题：Popup 有独立 HWND，永远在 WebView2 之上 -->
+            <!-- Popup overlay for the sync conflict toast -->
             <Popup x:Name="WorkspaceExpandPopup"
                    Grid.ColumnSpan="3"
                    Placement="Absolute"
@@ -2327,7 +2321,7 @@
                 </Button>
             </Popup>
 
-            <!-- Settings dialog uses Popup to stay above WebView2 airspace. -->
+            <!-- Settings dialog popup -->
             <Popup x:Name="SettingsDialogPopup"
                    Placement="Relative"
                    PlacementTarget="{Binding ElementName=WindowRoot}"

@@ -20,8 +20,6 @@ using System.Windows.Threading;
 using AuraMark.App.Models;
 using AuraMark.Core;
 using AuraMark.Core.Syntax;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.Wpf;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -48,7 +46,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         English,
     }
 
-    private const string VirtualHostName = "app.auramark.local";
     private const long LargeFileThresholdBytes = 5 * 1024 * 1024;
     private const int ImmersiveTypingThresholdMilliseconds = 3000;
     private const int UiAnimationMilliseconds = 150;
@@ -56,10 +53,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private double _sidebarExpandedWidth = 280;
     private double _outlineExpandedWidth = 300;
     private const double MouseWakeDistance = 100;
-    private static readonly JsonSerializerOptions EditorActionJsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
     private const int MaxRecentEntries = 25;
     private const int MaxOpenFileHistoryEntries = 100;
     private static readonly (string DirectoryName, string Label)[] SkillSources =
@@ -94,17 +87,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ".txt",
     };
 
-    private static readonly Dictionary<string, string> ImageContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [".png"] = "image/png",
-        [".jpg"] = "image/jpeg",
-        [".jpeg"] = "image/jpeg",
-        [".gif"] = "image/gif",
-        [".svg"] = "image/svg+xml",
-        [".webp"] = "image/webp",
-        [".bmp"] = "image/bmp",
-    };
-
     private readonly DispatcherTimer _externalReloadTimer;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ObservableCollection<FileTreeNode> _fileTreeNodes = [];
@@ -119,24 +101,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IReadOnlyList<EditorActionMenuDefinition> _paragraphMenuDefinitions = EditorActionCatalog.CreateParagraphMenuDefinitions();
     private readonly IReadOnlyList<EditorActionMenuDefinition> _formatMenuDefinitions = EditorActionCatalog.CreateFormatMenuDefinitions();
 
-    private CoreWebView2? _webViewCore;
     private FileSystemWatcher? _fileWatcher;
     private DateTime _ignoreWatcherUntilUtc = DateTime.MinValue;
     private DateTime _typingSessionStartUtc = DateTime.MinValue;
     private DateTime _lastTypingEventUtc = DateTime.MinValue;
     private Point? _lastMousePoint;
 
-    private string _editorAssetsRoot = string.Empty;
     private string _workspaceRoot = string.Empty;
     private string _currentFilePath = string.Empty;
     private string _currentMarkdown = string.Empty;
     private string _pendingMarkdown = string.Empty;
     private string _pendingSaveRetryContent = string.Empty;
     private string _pendingExternalMarkdown = string.Empty;
-    private string _queuedDocumentForWeb = string.Empty;
-
-    private bool _webReady;
-    private bool _editorInitialized;
     private bool _dirty;
     private bool _isSaving;
     private bool _isSidebarVisible;
@@ -163,12 +139,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _e2eSourceModePending;
     private string _e2eSourceAppendText = string.Empty;
     private bool _suppressFileTreeSelectionLoad;
-    private bool _webViewWarmed;
     private string _e2eOpenFilePath = string.Empty;
     private string _e2eStartupMarkdown = string.Empty;
     private int _documentLoadVersion;
-    private bool _isDocumentRendering;
-    private int? _pendingOutlineScrollIndex;
     private int _activeHeadingIndex = -1;
     private MarkdownOutlineDocument _outlineDocument = MarkdownOutlineDocument.Empty;
     private int _quickOpenLoadVersion;
@@ -198,7 +171,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         BuildEditorActionMenus();
         ApplyLanguage();
         ApplySourceModeState(true);
-        SourceModeToggleButton.IsEnabled = false;
+        SourceModeToggleButton.IsEnabled = true;
         UpdateOpenFileHistoryButtons();
         UpdateUndoRedoControls();
 
@@ -523,7 +496,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SyncConflictText.Text = Text("SyncConflictPrompt");
         UpdateSourceModeToggleUi();
 
-        if (!_isDocumentRendering && LoadingOverlay.Visibility != Visibility.Visible)
+        if (LoadingOverlay.Visibility != Visibility.Visible)
         {
             LoadingText.Text = Text("LoadingDocument");
         }
@@ -541,7 +514,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ApplyEditorActionMenuLocalization();
         ApplyQuickOpenFilter(QuickOpenSearchTextBox.Text);
         UpdateSettingsLanguageSelection();
-        PushLanguageToWeb();
     }
 
     private void UpdateSettingsLanguageSelection()
@@ -553,15 +525,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SettingsLanguageChineseOption.IsChecked = _pendingLanguage == AppLanguage.Chinese;
         SettingsLanguageEnglishOption.IsChecked = _pendingLanguage == AppLanguage.English;
-    }
-
-    private void PushLanguageToWeb()
-    {
-        SendCommand(new HostCommand
-        {
-            Name = IpcCommands.SetLanguage,
-            Content = ToLanguageCode(_currentLanguage),
-        });
     }
 
     private void BuildEditorActionMenus()
@@ -717,23 +680,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (_isSourceMode)
-        {
-            TryExecuteSourceEditorAction(actionId, args);
-            return;
-        }
-
-        var payload = new ExecuteEditorActionPayload
-        {
-            Id = actionId,
-            Args = args,
-        };
-
-        SendCommand(new HostCommand
-        {
-            Name = IpcCommands.ExecuteEditorAction,
-            Content = JsonSerializer.Serialize(payload, EditorActionJsonOptions),
-        });
+        TryExecuteSourceEditorAction(actionId, args);
     }
 
     private void OnEditorActionMenuItemClicked(object sender, RoutedEventArgs e)
@@ -744,29 +691,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         RequestEditorAction(binding.Id, binding.Args);
-    }
-
-    private void HandleEditorActionStateChanged(string json)
-    {
-        try
-        {
-            var snapshot = JsonSerializer.Deserialize<EditorActionStateSnapshot>(json, _jsonOptions);
-            _editorActionStates.Clear();
-            foreach (var (actionId, state) in snapshot?.Actions ?? [])
-            {
-                _editorActionStates[actionId] = state;
-                if (!string.IsNullOrWhiteSpace(state.Shortcut))
-                {
-                    _editorActionShortcuts[actionId] = state.Shortcut;
-                }
-            }
-        }
-        catch
-        {
-            return;
-        }
-
-        ApplyEditorActionMenuStates();
     }
 
     private void SetSourceModeState(bool enabled)
@@ -821,10 +745,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ConfigureE2eFromArgs();
-        if (!_isSourceMode)
-        {
-            await InitializeWebViewAsync();
-        }
 
         var docsRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -850,11 +770,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _currentFilePath = startupPath;
         await LoadDocumentAsync(startupPath, createIfMissing: createIfMissing);
-        if (!_isSourceMode)
-        {
-            await WarmUpWebViewAsync();
-        }
         await TryRestoreSnapshotOnStartupAsync();
+        ApplyPendingStartupE2eActions();
 
         if (!_e2eMode)
         {
@@ -919,66 +836,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _e2eMode = true;
         }
-    }
-
-    private async Task InitializeWebViewAsync()
-    {
-        await MainWebView.EnsureCoreWebView2Async();
-        _webViewCore = MainWebView.CoreWebView2;
-
-        _webViewCore.Settings.IsStatusBarEnabled = false;
-        _webViewCore.Settings.AreDefaultContextMenusEnabled = false;
-
-        _webViewCore.WebMessageReceived += OnWebMessageReceived;
-        _webViewCore.NavigationStarting += OnNavigationStarting;
-        _webViewCore.WebResourceRequested += OnWebResourceRequested;
-        _webViewCore.AddWebResourceRequestedFilter($"https://{VirtualHostName}/*", CoreWebView2WebResourceContext.Image);
-
-        _editorAssetsRoot = Path.Combine(AppContext.BaseDirectory, "EditorView");
-        Directory.CreateDirectory(_editorAssetsRoot);
-        _webViewCore.SetVirtualHostNameToFolderMapping(
-            VirtualHostName,
-            _editorAssetsRoot,
-            CoreWebView2HostResourceAccessKind.DenyCors);
-
-        MainWebView.Source = new Uri($"https://{VirtualHostName}/index.html");
-    }
-
-    private async Task ResetWebViewAsync()
-    {
-        if (_webViewCore is not null)
-        {
-            _webViewCore.WebMessageReceived -= OnWebMessageReceived;
-            _webViewCore.NavigationStarting -= OnNavigationStarting;
-            _webViewCore.WebResourceRequested -= OnWebResourceRequested;
-        }
-
-        _webViewCore = null;
-        _webReady = false;
-        _editorInitialized = false;
-        _isDocumentRendering = false;
-        ResetHistoryAvailability();
-
-        MainWebView.Dispose();
-        WebViewHost.Children.Clear();
-
-        var webView = new WebView2();
-        MainWebView = webView;
-        WebViewHost.Children.Add(webView);
-
-        await InitializeWebViewAsync();
-    }
-
-    private async Task WarmUpWebViewAsync()
-    {
-        if (_webViewWarmed || string.IsNullOrEmpty(_currentMarkdown))
-        {
-            return;
-        }
-
-        _webViewWarmed = true;
-        await ResetWebViewAsync();
-        QueueDocumentToWeb(_currentMarkdown);
     }
 
     private async void OnNewFileClicked(object sender, RoutedEventArgs e)
@@ -1157,15 +1014,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (_isSourceMode)
-        {
-            SourceTextEditor.Undo();
-            UpdateSourceHistoryAvailability();
-            UpdateSourceEditorActionStates();
-            return;
-        }
-
-        SendCommand(new HostCommand { Name = IpcCommands.Undo });
+        SourceTextEditor.Undo();
+        UpdateSourceHistoryAvailability();
+        UpdateSourceEditorActionStates();
     }
 
     private void RequestRedo()
@@ -1175,15 +1026,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (_isSourceMode)
-        {
-            SourceTextEditor.Redo();
-            UpdateSourceHistoryAvailability();
-            UpdateSourceEditorActionStates();
-            return;
-        }
-
-        SendCommand(new HostCommand { Name = IpcCommands.Redo });
+        SourceTextEditor.Redo();
+        UpdateSourceHistoryAvailability();
+        UpdateSourceEditorActionStates();
     }
 
     private bool TryHandleEditorActionShortcut(ModifierKeys modifiers, Key key)
@@ -1397,14 +1242,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ReplaceOpenFileHistoryPath(oldPath, _currentFilePath);
         SaveLastFile(_currentFilePath);
 
-        if (_webReady)
-        {
-            SendCommand(new HostCommand
-            {
-                Name = IpcCommands.SetTitle,
-                Content = Path.GetFileName(_currentFilePath),
-            });
-        }
     }
 
     private async Task NavigateOpenFileHistoryAsync(int offset)
@@ -2910,7 +2747,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var isSwitchingDocument =
             !string.IsNullOrWhiteSpace(_currentFilePath) &&
             !path.Equals(_currentFilePath, StringComparison.OrdinalIgnoreCase);
-        var showBlockingLoading = !_webReady || !_editorInitialized || !isSwitchingDocument;
+        var showBlockingLoading = !isSwitchingDocument;
         if (!await EnsureReadyToSwitchDocumentAsync(path))
         {
             return;
@@ -2948,7 +2785,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (info.Length > LargeFileThresholdBytes)
         {
             ShowLoading(true, Text("LoadingLargeFile"));
-            _webViewCore?.Stop();
+
             if (_e2eMode)
             {
                 await Task.Delay(E2eLargeFileDelayMilliseconds);
@@ -2993,15 +2830,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         RefreshFileTree();
         UpdateOutline(markdown);
         OutlineList.SelectedItem = null;
-        _pendingOutlineScrollIndex = null;
         AttachFileWatcher(path);
         SetSourceEditorText(markdown, clearUndoStack: true);
         if (_isSourceMode)
         {
             ShowLoading(false);
         }
-
-        QueueDocumentToWeb(markdown);
 
         if (!createIfMissing)
         {
@@ -3012,205 +2846,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetState(EditorState.Editing);
     }
 
-    private void QueueDocumentToWeb(string markdown)
+    private void ApplyPendingStartupE2eActions()
     {
-        _queuedDocumentForWeb = FrontMatterParser.Parse(markdown).ToJson();
-        ResetHistoryAvailability();
-        TryPushQueuedDocumentToWeb();
-    }
-
-    private void TryPushQueuedDocumentToWeb()
-    {
-        if (!_webReady || string.IsNullOrEmpty(_queuedDocumentForWeb))
+        if (_e2eStartupPending && !string.IsNullOrWhiteSpace(_e2eStartupMarkdown))
         {
-            return;
+            _e2eStartupPending = false;
+            _currentMarkdown = _e2eStartupMarkdown;
+            _pendingMarkdown = _e2eStartupMarkdown;
+            _dirty = true;
+            SetSavingDot(true);
+            UpdateOutline(_e2eStartupMarkdown);
+            SetSourceEditorText(_e2eStartupMarkdown, clearUndoStack: true);
+            SetState(EditorState.Dirty);
         }
 
-        if (!_editorInitialized || LoadingOverlay.Visibility == Visibility.Visible)
+        if (_e2eForceImmersive && !_e2eImmersiveApplied)
         {
-            ShowLoading(true, Text("Rendering"));
-        }
-        _isDocumentRendering = true;
-
-        if (!_editorInitialized)
-        {
-            PostToWeb(new WebMessagePayload
-            {
-                Type = IpcTypes.Init,
-                Content = _queuedDocumentForWeb,
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            });
-            _editorInitialized = true;
-        }
-        else
-        {
-            SendCommand(new HostCommand { Name = IpcCommands.ReplaceAll, Content = _queuedDocumentForWeb });
+            _e2eImmersiveApplied = true;
+            Dispatcher.InvokeAsync(EnterImmersiveMode, DispatcherPriority.Background);
         }
 
-        if (!string.IsNullOrEmpty(_currentFilePath))
+        if (_e2eSourceModePending || !string.IsNullOrWhiteSpace(_e2eSourceAppendText))
         {
-            SendCommand(new HostCommand { Name = IpcCommands.SetTitle, Content = Path.GetFileName(_currentFilePath) });
-        }
-
-        PushLanguageToWeb();
-
-        _queuedDocumentForWeb = string.Empty;
-    }
-
-    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
-    {
-        string rawJson;
-        try
-        {
-            rawJson = e.TryGetWebMessageAsString();
-        }
-        catch
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(rawJson))
-        {
-            return;
-        }
-
-        if (Encoding.UTF8.GetByteCount(rawJson) > IpcLimits.MaxContentBytes + 4096)
-        {
-            PostError(ErrorCodes.IpcParse, "payload too large");
-            return;
-        }
-
-        WebMessagePayload? payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<WebMessagePayload>(rawJson, _jsonOptions);
-        }
-        catch
-        {
-            PostError(ErrorCodes.IpcParse, "invalid json");
-            return;
-        }
-
-        if (payload is null || !IpcTypes.Allowed.Contains(payload.Type))
-        {
-            PostError(ErrorCodes.IpcParse, "unknown type");
-            return;
-        }
-
-        payload.Content ??= string.Empty;
-        if (Encoding.UTF8.GetByteCount(payload.Content) > IpcLimits.MaxContentBytes)
-        {
-            PostError(ErrorCodes.IpcParse, "content too large");
-            return;
-        }
-
-        switch (payload.Type)
-        {
-            case IpcTypes.Ack:
-                HandleAck(payload.Content);
-                break;
-            case IpcTypes.Update:
-                HandleMarkdownUpdate(payload.Content);
-                break;
-            case IpcTypes.Command:
-                HandleWebCommand(payload.Content);
-                break;
-            case IpcTypes.Error:
-                ShowSoftError(ParseErrorMessage(payload.Content));
-                break;
-        }
-    }
-    private void HandleAck(string content)
-    {
-        if (content.Equals("Ready", StringComparison.OrdinalIgnoreCase))
-        {
-            _webReady = true;
-            TryPushQueuedDocumentToWeb();
-            return;
-        }
-
-        if (content.Equals("Rendered", StringComparison.OrdinalIgnoreCase))
-        {
-            _isDocumentRendering = false;
-            ShowLoading(false);
-            WebViewHost.UpdateLayout();
-            MainWebView.InvalidateVisual();
-            MainWebView.UpdateLayout();
-
-            if (_pendingOutlineScrollIndex is int pendingIndex)
-            {
-                SendCommand(new HostCommand
-                {
-                    Name = IpcCommands.ScrollToHeading,
-                    Index = pendingIndex,
-                });
-                _pendingOutlineScrollIndex = null;
-            }
-
-            if (_e2eStartupPending && !string.IsNullOrWhiteSpace(_e2eStartupMarkdown))
-            {
-                _e2eStartupPending = false;
-                SendCommand(new HostCommand { Name = IpcCommands.E2eSetMarkdown, Content = _e2eStartupMarkdown });
-            }
-
-            if (_e2eForceImmersive && !_e2eImmersiveApplied)
-            {
-                _e2eImmersiveApplied = true;
-                Dispatcher.InvokeAsync(EnterImmersiveMode, DispatcherPriority.Background);
-            }
-
-            if (_e2eSourceModePending || !string.IsNullOrWhiteSpace(_e2eSourceAppendText))
-            {
-                Dispatcher.InvokeAsync(ApplyE2eSourceModeProbe, DispatcherPriority.Background);
-            }
-
-            return;
-        }
-    }
-
-    private void HandleMarkdownUpdate(string markdown)
-    {
-        if (_inputFrozen)
-        {
-            return;
-        }
-
-        if (_isSourceMode)
-        {
-            return;
-        }
-
-        _pendingMarkdown = markdown;
-        _dirty = true;
-        UpdateOutline(markdown);
-        SetState(EditorState.Dirty);
-        SetSavingDot(true);
-        HideError();
-        TrackTyping();
-    }
-
-    private void HandleWebCommand(string json)
-    {
-        if (!HostCommand.TryParse(json, out var command) || command is null)
-        {
-            return;
-        }
-
-        if (command.Name.Equals(IpcCommands.ToggleSidebar, StringComparison.Ordinal))
-        {
-            ToggleSidebar();
-        }
-        else if (command.Name.Equals(IpcCommands.ActiveHeadingChanged, StringComparison.Ordinal) && !_isSourceMode)
-        {
-            SetActiveHeadingIndex(command.Index ?? -1);
-        }
-        else if (command.Name.Equals(IpcCommands.HistoryStateChanged, StringComparison.Ordinal) && !_isSourceMode)
-        {
-            SetHistoryAvailability(command.CanUndo == true, command.CanRedo == true);
-        }
-        else if (command.Name.Equals(IpcCommands.EditorActionStateChanged, StringComparison.Ordinal) && !_isSourceMode)
-        {
-            HandleEditorActionStateChanged(command.Content ?? string.Empty);
+            Dispatcher.InvokeAsync(ApplyE2eSourceModeProbe, DispatcherPriority.Background);
         }
     }
 
@@ -3244,7 +2902,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ApplyTopBarVisualState(false);
         ApplySidebarVisualState(false);
         ApplyOutlineVisualState(false);
-        SendCommand(new HostCommand { Name = IpcCommands.SetImmersive, Value = true });
         SetState(EditorState.Immersive);
     }
 
@@ -3259,7 +2916,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ApplyTopBarVisualState(true);
         ApplySidebarVisualState(_sidebarBeforeImmersive);
         ApplyOutlineVisualState(_outlineBeforeImmersive);
-        SendCommand(new HostCommand { Name = IpcCommands.SetImmersive, Value = false });
         SetState(EditorState.Editing);
     }
 
@@ -3311,13 +2967,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 HideError();
                 SetSavingDot(false);
                 SetState(EditorState.Editing);
-
-                PostToWeb(new WebMessagePayload
-                {
-                    Type = IpcTypes.Ack,
-                    Content = "Saved",
-                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                });
             }
         }
         catch (UnauthorizedAccessException)
@@ -3326,8 +2975,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _pendingSaveRetryContent = markdownToSave;
                 SetState(EditorState.Dirty);
-                ShowSoftError($"{ErrorCodes.SaveDenied}: no permission.");
-                PostError(ErrorCodes.SaveDenied, "no permission.", savePath, retryable: true);
+                ShowSoftError("save_denied: no permission.");
             }
         }
         catch (IOException)
@@ -3336,8 +2984,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _pendingSaveRetryContent = markdownToSave;
                 SetState(EditorState.Dirty);
-                ShowSoftError($"{ErrorCodes.SaveIo}: write failed.");
-                PostError(ErrorCodes.SaveIo, "write failed.", savePath, retryable: true);
+                ShowSoftError("save_io: write failed.");
             }
         }
         finally
@@ -3417,11 +3064,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _hasExternalConflict = true;
             SetState(EditorState.ExternalSync, "Conflict detected");
             ShowSyncConflict();
-            PostError(
-                ErrorCodes.SyncConflict,
-                "external file changed while local has unsaved updates",
-                _currentFilePath,
-                retryable: true);
             return;
         }
 
@@ -3434,7 +3076,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetState(EditorState.ExternalSync);
         _inputFrozen = true;
         UpdateSourceEditorReadOnly();
-        SendCommand(new HostCommand { Name = IpcCommands.FreezeInput });
 
         _currentMarkdown = markdown;
         _pendingMarkdown = markdown;
@@ -3442,12 +3083,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetSavingDot(false);
         UpdateOutline(markdown);
         SetSourceEditorText(markdown, clearUndoStack: true);
-        QueueDocumentToWeb(markdown);
 
         await Task.Delay(120);
         _inputFrozen = false;
         UpdateSourceEditorReadOnly();
-        SendCommand(new HostCommand { Name = IpcCommands.ResumeInput });
     }
 
     private async Task SaveConflictSnapshotAsync(string markdown)
@@ -3520,7 +3159,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             SetSavingDot(true);
             UpdateOutline(snapshotMarkdown);
             SetSourceEditorText(snapshotMarkdown, clearUndoStack: true);
-            QueueDocumentToWeb(snapshotMarkdown);
             SetState(EditorState.Dirty, "Recovered snapshot");
             ShowSoftError(Text("RecoveredSnapshotHint"));
         }
@@ -3896,18 +3534,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (_isDocumentRendering || !_webReady)
-        {
-            _pendingOutlineScrollIndex = item.Index;
-            OutlineList.SelectedItem = null;
-            return;
-        }
-
-        SendCommand(new HostCommand
-        {
-            Name = IpcCommands.ScrollToHeading,
-            Index = item.Index,
-        });
+        ScrollSourceEditorToHeading(item.Index);
 
         OutlineList.SelectedItem = null;
     }
@@ -4245,7 +3872,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _confirmDialogTcs = new TaskCompletionSource<MessageBoxResult>();
         ConfirmDialogTitle.Text = title;
         ConfirmDialogMessage.Text = message;
-        WebViewHost.Visibility = Visibility.Hidden;
         FadeElement(ConfirmDialogOverlay, visible: true);
         return _confirmDialogTcs.Task;
     }
@@ -4254,21 +3880,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         FadeElement(ConfirmDialogOverlay, visible: false);
         _confirmDialogTcs?.TrySetResult(MessageBoxResult.Yes);
-        WebViewHost.Visibility = Visibility.Visible;
     }
 
     private void OnConfirmDialogDiscardClicked(object sender, RoutedEventArgs e)
     {
         FadeElement(ConfirmDialogOverlay, visible: false);
         _confirmDialogTcs?.TrySetResult(MessageBoxResult.No);
-        WebViewHost.Visibility = Visibility.Visible;
     }
 
     private void OnConfirmDialogCancelClicked(object sender, RoutedEventArgs e)
     {
         FadeElement(ConfirmDialogOverlay, visible: false);
         _confirmDialogTcs?.TrySetResult(MessageBoxResult.Cancel);
-        WebViewHost.Visibility = Visibility.Visible;
     }
 
     private void ShowSyncConflict()
@@ -4298,200 +3921,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         StateText.Text = label;
-    }
-
-    private void SendCommand(HostCommand command)
-    {
-        PostToWeb(new WebMessagePayload
-        {
-            Type = IpcTypes.Command,
-            Content = command.ToJson(),
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-        });
-    }
-
-    private void PostError(string code, string message, string? path = null, bool retryable = false)
-    {
-        var payload = new IpcErrorPayload
-        {
-            Code = code,
-            Message = message,
-            Path = path,
-            Retryable = retryable,
-        };
-
-        PostToWeb(new WebMessagePayload
-        {
-            Type = IpcTypes.Error,
-            Content = payload.ToJson(),
-            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-        });
-    }
-
-    private static string ParseErrorMessage(string content)
-    {
-        if (IpcErrorPayload.TryParse(content, out var payload) && payload is not null)
-        {
-            return $"{payload.Code}: {payload.Message}";
-        }
-
-        return content;
-    }
-
-    private void PostToWeb(WebMessagePayload payload)
-    {
-        if (_webViewCore is null)
-        {
-            return;
-        }
-
-        if (!_webReady && payload.Type is not IpcTypes.Init and not IpcTypes.Error)
-        {
-            return;
-        }
-
-        var json = JsonSerializer.Serialize(payload, _jsonOptions);
-        _webViewCore.PostWebMessageAsString(json);
-    }
-
-    private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
-    {
-        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri))
-        {
-            return;
-        }
-
-        _webReady = false;
-        _editorInitialized = false;
-        ResetHistoryAvailability();
-        _editorActionStates.Clear();
-        ApplyEditorActionMenuStates();
-
-        if (uri.Scheme.Equals("about", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        if (!uri.Host.Equals(VirtualHostName, StringComparison.OrdinalIgnoreCase))
-        {
-            e.Cancel = true;
-        }
-    }
-
-    private void OnWebResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
-    {
-        if (_webViewCore is null || string.IsNullOrWhiteSpace(_currentFilePath))
-        {
-            return;
-        }
-
-        if (!Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri))
-        {
-            return;
-        }
-
-        if (!uri.Host.Equals(VirtualHostName, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var decodedPath = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/')).Replace('/', Path.DirectorySeparatorChar);
-        var extension = Path.GetExtension(decodedPath);
-        if (!ImageContentTypes.ContainsKey(extension))
-        {
-            return;
-        }
-
-        var staticAssetPath = Path.Combine(_editorAssetsRoot, decodedPath);
-        if (File.Exists(staticAssetPath))
-        {
-            return;
-        }
-
-        var resolvedImagePath = ResolveImagePath(uri, decodedPath);
-        if (string.IsNullOrWhiteSpace(resolvedImagePath) || !File.Exists(resolvedImagePath))
-        {
-            return;
-        }
-
-        if (!IsPathAllowed(resolvedImagePath))
-        {
-            return;
-        }
-
-        try
-        {
-            var stream = File.OpenRead(resolvedImagePath);
-            var headers = $"Content-Type: {ImageContentTypes[Path.GetExtension(resolvedImagePath)]}\r\nCache-Control: no-cache";
-            e.Response = _webViewCore.Environment.CreateWebResourceResponse(stream, 200, "OK", headers);
-        }
-        catch
-        {
-            // Ignore invalid image resources.
-        }
-    }
-
-    private string? ResolveImagePath(Uri uri, string decodedPath)
-    {
-        var queryPath = TryGetQueryValue(uri.Query, "path");
-        if (!string.IsNullOrWhiteSpace(queryPath))
-        {
-            decodedPath = queryPath.Replace('/', Path.DirectorySeparatorChar);
-        }
-
-        if (Path.IsPathRooted(decodedPath))
-        {
-            return Path.GetFullPath(decodedPath);
-        }
-
-        var currentDir = Path.GetDirectoryName(_currentFilePath) ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(currentDir))
-        {
-            return null;
-        }
-
-        return Path.GetFullPath(Path.Combine(currentDir, decodedPath));
-    }
-
-    private static string? TryGetQueryValue(string query, string key)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return null;
-        }
-
-        var trimmed = query.TrimStart('?');
-        var pairs = trimmed.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var pair in pairs)
-        {
-            var kv = pair.Split('=', 2);
-            if (kv.Length != 2)
-            {
-                continue;
-            }
-
-            if (kv[0].Equals(key, StringComparison.OrdinalIgnoreCase))
-            {
-                return Uri.UnescapeDataString(kv[1]);
-            }
-        }
-
-        return null;
-    }
-
-    private bool IsPathAllowed(string path)
-    {
-        if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
-        {
-            return false;
-        }
-
-        var normalizedPath = Path.GetFullPath(path);
-        var normalizedRoot = Path.GetFullPath(_workspaceRoot)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
-
-        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ComputePathHash(string path)
