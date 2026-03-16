@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.TextFormatting;
+using AuraMark.Core.Syntax;
 
 namespace AuraMark.Core.Layout;
 
@@ -113,6 +114,8 @@ public sealed class MarkdownTextRunPropertyFactory
     private static readonly Brush AccentForeground = CreateBrush("#1D4ED8");
     private static readonly Brush CodeForeground = CreateBrush("#E5E7EB");
     private static readonly Brush CodeBackground = CreateBrush("#111827");
+    private static readonly Brush InlineCodeForeground = CreateBrush("#111827");
+    private static readonly Brush InlineCodeBackground = CreateBrush("#E5E7EB");
 
     private readonly ThemeMetrics _metrics;
 
@@ -155,6 +158,72 @@ public sealed class MarkdownTextRunPropertyFactory
             _metrics.BodyFontSize,
             AccentForeground,
             textDecorations: TextDecorations.Underline);
+
+    public TextRunProperties CreateInline(MdInline inline, TextRunProperties baseProperties)
+    {
+        return inline switch
+        {
+            StrongInline => CreateStrong(baseProperties),
+            EmphasisInline => CreateEmphasis(baseProperties),
+            CodeInline => CreateInlineCode(baseProperties),
+            LinkInline => CreateLink(baseProperties),
+            _ => baseProperties,
+        };
+    }
+
+    private static TextRunProperties CreateStrong(TextRunProperties baseProperties) =>
+        new SimpleTextRunProperties(
+            new Typeface(baseProperties.Typeface.FontFamily, baseProperties.Typeface.Style, FontWeights.Bold, baseProperties.Typeface.Stretch),
+            baseProperties.FontRenderingEmSize,
+            baseProperties.ForegroundBrush,
+            baseProperties.BackgroundBrush,
+            baseProperties.TextDecorations,
+            baseProperties.CultureInfo);
+
+    private static TextRunProperties CreateEmphasis(TextRunProperties baseProperties) =>
+        new SimpleTextRunProperties(
+            new Typeface(baseProperties.Typeface.FontFamily, FontStyles.Italic, baseProperties.Typeface.Weight, baseProperties.Typeface.Stretch),
+            baseProperties.FontRenderingEmSize,
+            baseProperties.ForegroundBrush,
+            baseProperties.BackgroundBrush,
+            baseProperties.TextDecorations,
+            baseProperties.CultureInfo);
+
+    private TextRunProperties CreateInlineCode(TextRunProperties baseProperties) =>
+        new SimpleTextRunProperties(
+            _metrics.CodeTypeface,
+            Math.Max(12, baseProperties.FontRenderingEmSize * 0.95),
+            InlineCodeForeground,
+            InlineCodeBackground,
+            baseProperties.TextDecorations,
+            baseProperties.CultureInfo);
+
+    private static TextRunProperties CreateLink(TextRunProperties baseProperties) =>
+        new SimpleTextRunProperties(
+            new Typeface(baseProperties.Typeface.FontFamily, baseProperties.Typeface.Style, baseProperties.Typeface.Weight, baseProperties.Typeface.Stretch),
+            baseProperties.FontRenderingEmSize,
+            AccentForeground,
+            baseProperties.BackgroundBrush,
+            CombineTextDecorations(baseProperties.TextDecorations, TextDecorations.Underline),
+            baseProperties.CultureInfo);
+
+    private static TextDecorationCollection CombineTextDecorations(
+        TextDecorationCollection existingDecorations,
+        TextDecorationCollection addedDecorations)
+    {
+        if (existingDecorations.Count == 0)
+        {
+            return addedDecorations;
+        }
+
+        var combined = new TextDecorationCollection(existingDecorations);
+        foreach (var decoration in addedDecorations)
+        {
+            combined.Add(decoration);
+        }
+
+        return combined;
+    }
 
     private static SolidColorBrush CreateBrush(string color)
     {

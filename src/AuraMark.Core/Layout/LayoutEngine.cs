@@ -28,13 +28,7 @@ public sealed class LayoutEngine : ILayoutEngine
 
         foreach (var block in request.Parse.Blocks)
         {
-            LayoutBlock? layoutBlock = block switch
-            {
-                ParagraphBlock paragraph => LayoutParagraph(paragraph, request.Parse.Snapshot.Text, propertyFactory, metrics, x, y, width),
-                HeadingBlock heading => LayoutHeading(heading, request.Parse.Snapshot.Text, propertyFactory, metrics, x, y, width),
-                CodeFenceBlock codeFence => LayoutCodeFence(codeFence, request.Parse.Snapshot.Text, propertyFactory, metrics, x, y, width),
-                _ => null,
-            };
+            var layoutBlock = LayoutMarkdownBlock(block, request.Parse.Snapshot.Text, propertyFactory, metrics, x, y, width);
 
             if (layoutBlock is null)
             {
@@ -47,6 +41,26 @@ public sealed class LayoutEngine : ILayoutEngine
 
         var totalHeight = blocks.Count == 0 ? 0 : Math.Max(0, y - metrics.BlockSpacing);
         return new LayoutBuildResult(new LayoutDocument(request.Parse.Snapshot.Version.Value, blocks, totalHeight));
+    }
+
+    private LayoutBlock? LayoutMarkdownBlock(
+        MdBlock block,
+        SourceText text,
+        MarkdownTextRunPropertyFactory propertyFactory,
+        ThemeMetrics metrics,
+        double x,
+        double y,
+        double width)
+    {
+        return block switch
+        {
+            ParagraphBlock paragraph => LayoutParagraph(paragraph, text, propertyFactory, metrics, x, y, width),
+            HeadingBlock heading => LayoutHeading(heading, text, propertyFactory, metrics, x, y, width),
+            QuoteBlock quote => LayoutQuote(quote, text, propertyFactory, metrics, x, y, width),
+            ListBlock list => LayoutList(list, text, propertyFactory, metrics, x, y, width),
+            CodeFenceBlock codeFence => LayoutCodeFence(codeFence, text, propertyFactory, metrics, x, y, width),
+            _ => null,
+        };
     }
 
     private LayoutParagraphBlock LayoutParagraph(
@@ -131,6 +145,98 @@ public sealed class LayoutEngine : ILayoutEngine
         var contentBounds = new Rect(x + padding, toolbarBounds.Bottom, width - padding * 2, Math.Max(0, lineY - toolbarBounds.Bottom + padding));
         var cardBounds = new Rect(x, y, width, contentBounds.Bottom - y);
         return new LayoutCodeFenceBlock(block.Span, cardBounds, toolbarBounds, contentBounds, lines, block.Language);
+    }
+
+    private LayoutQuoteBlock LayoutQuote(
+        QuoteBlock block,
+        SourceText text,
+        MarkdownTextRunPropertyFactory propertyFactory,
+        ThemeMetrics metrics,
+        double x,
+        double y,
+        double width)
+    {
+        const double quoteIndent = 24;
+        const double quoteTopPadding = 4;
+        const double quoteBottomPadding = 6;
+
+        var childX = x + quoteIndent;
+        var childY = y + quoteTopPadding;
+        var childWidth = Math.Max(120, width - quoteIndent);
+        var children = new List<LayoutBlock>(block.Children.Count);
+
+        foreach (var child in block.Children)
+        {
+            var childLayout = LayoutMarkdownBlock(child, text, propertyFactory, metrics, childX, childY, childWidth);
+            if (childLayout is null)
+            {
+                continue;
+            }
+
+            children.Add(childLayout);
+            childY = childLayout.Bounds.Bottom + metrics.BlockSpacing;
+        }
+
+        var contentBottom = children.Count == 0
+            ? y + metrics.BodyFontSize * 1.5
+            : children[^1].Bounds.Bottom;
+        var bounds = new Rect(x, y, width, Math.Max(metrics.BodyFontSize * 1.5, contentBottom - y + quoteBottomPadding));
+        var stripeBounds = new Rect(x + 6, y + 4, 4, Math.Max(12, bounds.Height - 8));
+        return new LayoutQuoteBlock(block.Span, bounds, stripeBounds, children);
+    }
+
+    private LayoutListBlock LayoutList(
+        ListBlock block,
+        SourceText text,
+        MarkdownTextRunPropertyFactory propertyFactory,
+        ThemeMetrics metrics,
+        double x,
+        double y,
+        double width)
+    {
+        const double markerWidth = 28;
+        const double contentIndent = 32;
+
+        var items = new List<LayoutListItemLayout>(block.Items.Count);
+        var currentY = y;
+
+        foreach (var (item, itemIndex) in block.Items.Select((value, index) => (value, index)))
+        {
+            var childX = x + contentIndent;
+            var childY = currentY;
+            var childWidth = Math.Max(120, width - contentIndent);
+            var childLayouts = new List<LayoutBlock>(item.Children.Count);
+
+            foreach (var child in item.Children)
+            {
+                var childLayout = LayoutMarkdownBlock(child, text, propertyFactory, metrics, childX, childY, childWidth);
+                if (childLayout is null)
+                {
+                    continue;
+                }
+
+                childLayouts.Add(childLayout);
+                childY = childLayout.Bounds.Bottom + metrics.ParagraphSpacing;
+            }
+
+            var contentBottom = childLayouts.Count == 0
+                ? currentY + metrics.BodyFontSize * 1.5
+                : childLayouts[^1].Bounds.Bottom;
+            var itemHeight = Math.Max(metrics.BodyFontSize * 1.5, contentBottom - currentY);
+            var markerBounds = new Rect(x, currentY, markerWidth, itemHeight);
+            var itemBounds = new Rect(x, currentY, width, itemHeight + metrics.ParagraphSpacing);
+            items.Add(new LayoutListItemLayout(
+                item.Span,
+                itemBounds,
+                block.Ordered ? $"{itemIndex + 1}." : "•",
+                markerBounds,
+                childLayouts));
+
+            currentY = itemBounds.Bottom;
+        }
+
+        var totalHeight = items.Count == 0 ? 0 : items[^1].Bounds.Bottom - y;
+        return new LayoutListBlock(block.Span, new Rect(x, y, width, totalHeight), block.Ordered, items);
     }
 
     private List<TextLineLayout> FormatTextLines(

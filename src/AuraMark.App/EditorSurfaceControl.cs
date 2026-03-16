@@ -44,6 +44,8 @@ public sealed class EditorSurfaceControl : FrameworkElement
     private readonly ParagraphRenderer _paragraphRenderer = new();
     private readonly HeadingRenderer _headingRenderer = new();
     private readonly CodeFenceRenderer _codeFenceRenderer = new();
+    private readonly QuoteRenderer _quoteRenderer = new();
+    private readonly ListRenderer _listRenderer = new();
     private readonly SelectionRenderer _selectionRenderer = new();
     private readonly CaretRenderer _caretRenderer = new();
     private readonly DispatcherTimer _caretBlinkTimer;
@@ -207,18 +209,7 @@ public sealed class EditorSurfaceControl : FrameworkElement
         {
             foreach (var block in _state.Layout.Blocks)
             {
-                switch (block)
-                {
-                    case LayoutParagraphBlock paragraph:
-                        _paragraphRenderer.Render(drawingContext, paragraph);
-                        break;
-                    case LayoutHeadingBlock heading:
-                        _headingRenderer.Render(drawingContext, heading);
-                        break;
-                    case LayoutCodeFenceBlock codeFence:
-                        _codeFenceRenderer.Render(drawingContext, codeFence);
-                        break;
-                }
+                RenderBlock(drawingContext, block);
             }
 
             var selectionRects = _selectionGeometryProvider.GetSelectionRects(_state.Layout, _state.Snapshot.Selection);
@@ -603,6 +594,41 @@ public sealed class EditorSurfaceControl : FrameworkElement
         _caretVisible = true;
         _caretBlinkTimer.Stop();
         _caretBlinkTimer.Start();
+    }
+
+    private void RenderBlock(DrawingContext drawingContext, LayoutBlock block)
+    {
+        switch (block)
+        {
+            case LayoutParagraphBlock paragraph:
+                _paragraphRenderer.Render(drawingContext, paragraph);
+                break;
+            case LayoutHeadingBlock heading:
+                _headingRenderer.Render(drawingContext, heading);
+                break;
+            case LayoutQuoteBlock quote:
+                _quoteRenderer.Render(drawingContext, quote);
+                foreach (var child in quote.Children)
+                {
+                    RenderBlock(drawingContext, child);
+                }
+
+                break;
+            case LayoutListBlock list:
+                _listRenderer.Render(drawingContext, list);
+                foreach (var item in list.Items)
+                {
+                    foreach (var child in item.Children)
+                    {
+                        RenderBlock(drawingContext, child);
+                    }
+                }
+
+                break;
+            case LayoutCodeFenceBlock codeFence:
+                _codeFenceRenderer.Render(drawingContext, codeFence);
+                break;
+        }
     }
 
     private static EditorVisualState CreateVisualState(SelectionRange selection) =>

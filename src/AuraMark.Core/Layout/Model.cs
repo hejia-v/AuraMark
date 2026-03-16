@@ -54,6 +54,27 @@ public sealed record LayoutHeadingBlock(
     IReadOnlyList<TextLineLayout> Lines)
     : LayoutBlock(Span, Bounds);
 
+public sealed record LayoutQuoteBlock(
+    TextSpan Span,
+    Rect Bounds,
+    Rect StripeBounds,
+    IReadOnlyList<LayoutBlock> Children)
+    : LayoutBlock(Span, Bounds);
+
+public sealed record LayoutListItemLayout(
+    TextSpan Span,
+    Rect Bounds,
+    string MarkerText,
+    Rect MarkerBounds,
+    IReadOnlyList<LayoutBlock> Children);
+
+public sealed record LayoutListBlock(
+    TextSpan Span,
+    Rect Bounds,
+    bool Ordered,
+    IReadOnlyList<LayoutListItemLayout> Items)
+    : LayoutBlock(Span, Bounds);
+
 public sealed record LayoutCodeFenceBlock(
     TextSpan Span,
     Rect Bounds,
@@ -172,6 +193,29 @@ public static class LayoutLineEnumerator
                 foreach (var line in heading.Lines)
                 {
                     yield return line;
+                }
+
+                break;
+            case LayoutQuoteBlock quote:
+                foreach (var child in quote.Children)
+                {
+                    foreach (var line in EnumerateLines(child))
+                    {
+                        yield return line;
+                    }
+                }
+
+                break;
+            case LayoutListBlock list:
+                foreach (var item in list.Items)
+                {
+                    foreach (var child in item.Children)
+                    {
+                        foreach (var line in EnumerateLines(child))
+                        {
+                            yield return line;
+                        }
+                    }
                 }
 
                 break;
