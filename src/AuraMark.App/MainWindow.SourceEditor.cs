@@ -1,31 +1,19 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
-using AuraMark.Core.Editing;
-using AuraMark.Core.Syntax;
-using AuraMark.Core.Text;
 
 namespace AuraMark.App;
 
 public partial class MainWindow
 {
-    private readonly MarkdownEditorReducer _markdownEditorReducer = new();
-    private readonly MarkdownEditorActionStateEvaluator _markdownEditorActionStateEvaluator = new();
     private bool _suppressSourceEditorUpdates;
 
     private void InitializeSourceEditor()
     {
         SourceTextEditor.Focusable = true;
-        SourceTextEditor.IsTabStop = true;
-        SourceTextEditor.Options.ConvertTabsToSpaces = false;
-        SourceTextEditor.Options.IndentationSize = 2;
-        SourceTextEditor.Options.EnableHyperlinks = false;
-        SourceTextEditor.TextArea.Focusable = true;
-        SourceTextEditor.TextArea.IsTabStop = true;
-        SourceTextEditor.TextArea.TextView.LineTransformers.Add(new MarkdownSourceColorizer());
-        SourceTextEditor.TextChanged += OnSourceEditorTextChanged;
-        SourceTextEditor.TextArea.SelectionChanged += (_, _) => HandleSourceSelectionOrCaretChanged();
-        SourceTextEditor.TextArea.Caret.PositionChanged += (_, _) => HandleSourceSelectionOrCaretChanged();
+        SourceTextEditor.TextContentChanged += OnSourceEditorTextChanged;
+        SourceTextEditor.EditorSelectionChanged += (_, _) => HandleSourceSelectionOrCaretChanged();
+        SourceTextEditor.HistoryStateChanged += (_, _) => UpdateSourceHistoryAvailability();
         SourceTextEditor.IsReadOnly = _inputFrozen;
     }
 
@@ -79,16 +67,9 @@ public partial class MainWindow
                 return;
             }
 
-            if (SourceTextEditor.CaretOffset > SourceTextEditor.Text.Length)
-            {
-                SourceTextEditor.CaretOffset = SourceTextEditor.Text.Length;
-            }
-
-            FocusManager.SetFocusedElement(this, SourceTextEditor.TextArea);
+            FocusManager.SetFocusedElement(this, SourceTextEditor);
             SourceTextEditor.Focus();
-            SourceTextEditor.TextArea.Focus();
-            Keyboard.Focus(SourceTextEditor.TextArea);
-            SourceTextEditor.TextArea.Caret.BringCaretToView();
+            Keyboard.Focus(SourceTextEditor);
         }
 
         Dispatcher.InvokeAsync(FocusSourceEditor, DispatcherPriority.Input);
@@ -108,14 +89,14 @@ public partial class MainWindow
 
         if (!string.IsNullOrWhiteSpace(_e2eSourceAppendText))
         {
-            var lineEnding = MarkdownEditorTextUtilities.DetectLineEnding(SourceTextEditor.Text);
-            var prefix = SourceTextEditor.Text.Length == 0 || SourceTextEditor.Text.EndsWith(lineEnding, StringComparison.Ordinal)
-                ? string.Empty
-                : lineEnding;
-            var addition = prefix + _e2eSourceAppendText;
-            ApplySourceEditResult(new MarkdownEditorEditResult(
-                [new MarkdownEditorReplacement(SourceTextEditor.Text.Length, 0, addition)],
-                TextSelection.Collapsed(SourceTextEditor.Text.Length + addition.Length)));
+            var prefix = SourceTextEditor.TextLength > 0 &&
+                         !SourceTextEditor.Text.EndsWith("\n", StringComparison.Ordinal) &&
+                         !SourceTextEditor.Text.EndsWith("\r", StringComparison.Ordinal)
+                ? Environment.NewLine
+                : string.Empty;
+
+            SourceTextEditor.SetSelection(SourceTextEditor.TextLength, 0);
+            SourceTextEditor.ReplaceSelection(prefix + _e2eSourceAppendText);
             _e2eSourceAppendText = string.Empty;
         }
 
@@ -125,21 +106,15 @@ public partial class MainWindow
     private void SetSourceEditorText(string markdown, bool clearUndoStack)
     {
         var nextText = markdown ?? string.Empty;
-        var caretOffset = Math.Min(SourceTextEditor.CaretOffset, nextText.Length);
+        if (!clearUndoStack && string.Equals(SourceTextEditor.Text, nextText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         _suppressSourceEditorUpdates = true;
         try
         {
-            if (!string.Equals(SourceTextEditor.Text, nextText, StringComparison.Ordinal))
-            {
-                SourceTextEditor.Text = nextText;
-            }
-
-            if (clearUndoStack)
-            {
-                SourceTextEditor.Document?.UndoStack.ClearAll();
-            }
-
-            SourceTextEditor.CaretOffset = Math.Min(caretOffset, SourceTextEditor.Text.Length);
+            SourceTextEditor.LoadText(nextText, clearUndoStack);
         }
         finally
         {
@@ -156,12 +131,7 @@ public partial class MainWindow
 
     private void OnSourceEditorTextChanged(object? sender, EventArgs e)
     {
-        if (_suppressSourceEditorUpdates)
-        {
-            return;
-        }
-
-        if (_inputFrozen)
+        if (_suppressSourceEditorUpdates || _inputFrozen)
         {
             return;
         }
@@ -210,37 +180,14 @@ public partial class MainWindow
             return;
         }
 
-        var canUndo = !_inputFrozen && (SourceTextEditor.Document?.UndoStack.CanUndo ?? false);
-        var canRedo = !_inputFrozen && (SourceTextEditor.Document?.UndoStack.CanRedo ?? false);
-        SetHistoryAvailability(canUndo, canRedo);
+        SetHistoryAvailability(!_inputFrozen && SourceTextEditor.CanUndo, !_inputFrozen && SourceTextEditor.CanRedo);
     }
 
     private bool TryExecuteSourceEditorAction(string actionId, IReadOnlyDictionary<string, object?>? args = null)
     {
-        if (_inputFrozen)
-        {
-            return false;
-        }
-
-        var handled = _markdownEditorReducer.TryReduce(
-            CreateMarkdownEditorState(),
-            new MarkdownEditorAction(actionId, args),
-            out var result);
-
-        if (handled && result is not null)
-        {
-            ApplySourceEditResult(result);
-        }
-
-        if (handled)
-        {
-            UpdateSourceHistoryAvailability();
-            UpdateSourceEditorActionStates();
-            UpdateSourceActiveHeading();
-            SourceTextEditor.Focus();
-        }
-
-        return handled;
+        _ = actionId;
+        _ = args;
+        return false;
     }
 
     private void UpdateSourceEditorActionStates()
@@ -250,14 +197,14 @@ public partial class MainWindow
             return;
         }
 
-        var enabled = !_inputFrozen;
-        var snapshot = _markdownEditorActionStateEvaluator.Evaluate(CreateMarkdownEditorState());
-        var actions = SourceEditorActionStateFactory.Create(snapshot, enabled, ResolveEditorActionShortcut);
-
         _editorActionStates.Clear();
-        foreach (var (actionId, state) in actions)
+        foreach (var descriptor in EditorActionCatalog.SourceActionDescriptors)
         {
-            _editorActionStates[actionId] = state;
+            _editorActionStates[descriptor.StateId] = new EditorActionState
+            {
+                Enabled = false,
+                Shortcut = ResolveEditorActionShortcut(descriptor.StateId, descriptor.DefaultShortcut),
+            };
         }
 
         ApplyEditorActionMenuStates();
@@ -265,14 +212,14 @@ public partial class MainWindow
 
     private void UpdateSourceActiveHeading()
     {
-        if (!_isSourceMode || SourceTextEditor.Document is null || _outlineDocument.Headings.Count == 0)
+        if (!_isSourceMode || _outlineDocument.Headings.Count == 0)
         {
             SetActiveHeadingIndex(-1);
             return;
         }
 
         var activeIndex = -1;
-        var caretOffset = Math.Min(SourceTextEditor.CaretOffset, SourceTextEditor.Text.Length);
+        var caretOffset = Math.Min(SourceTextEditor.CaretOffset, SourceTextEditor.TextLength);
         for (var index = 0; index < _outlineDocument.Headings.Count; index++)
         {
             if (_outlineDocument.Headings[index].SourceOffset > caretOffset)
@@ -288,52 +235,14 @@ public partial class MainWindow
 
     private void ScrollSourceEditorToHeading(int index)
     {
-        if (!_isSourceMode ||
-            index < 0 ||
-            index >= _outlineDocument.Headings.Count ||
-            SourceTextEditor.Document is null)
+        if (!_isSourceMode || index < 0 || index >= _outlineDocument.Headings.Count)
         {
             return;
         }
 
-        var headingOffset = Math.Min(_outlineDocument.Headings[index].SourceOffset, SourceTextEditor.Document.TextLength);
-        var line = SourceTextEditor.Document.GetLineByOffset(headingOffset);
-        SourceTextEditor.ScrollToLine(line.LineNumber);
-        SourceTextEditor.CaretOffset = line.Offset;
+        var headingOffset = Math.Min(_outlineDocument.Headings[index].SourceOffset, SourceTextEditor.TextLength);
+        SourceTextEditor.CaretOffset = headingOffset;
+        SourceTextEditor.ScrollToOffset(headingOffset);
         SourceTextEditor.Focus();
-    }
-
-    private MarkdownEditorState CreateMarkdownEditorState()
-    {
-        return new MarkdownEditorState(
-            SourceTextEditor.Text,
-            TextSelection.FromStartAndLength(SourceTextEditor.SelectionStart, SourceTextEditor.SelectionLength));
-    }
-
-    private void ApplySourceEditResult(MarkdownEditorEditResult result)
-    {
-        var document = SourceTextEditor.Document;
-        if (document is null)
-        {
-            return;
-        }
-
-        document.BeginUpdate();
-        try
-        {
-            foreach (var replacement in result.Replacements.OrderByDescending(item => item.Start))
-            {
-                document.Replace(replacement.Start, replacement.Length, replacement.NewText);
-            }
-        }
-        finally
-        {
-            document.EndUpdate();
-        }
-
-        var nextSelectionStart = Math.Min(result.Selection.Start, SourceTextEditor.Text.Length);
-        var nextSelectionEnd = Math.Min(result.Selection.End, SourceTextEditor.Text.Length);
-        SourceTextEditor.Select(nextSelectionStart, Math.Max(0, nextSelectionEnd - nextSelectionStart));
-        SourceTextEditor.CaretOffset = nextSelectionEnd;
     }
 }

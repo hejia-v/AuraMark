@@ -197,7 +197,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeSourceEditor();
         BuildEditorActionMenus();
         ApplyLanguage();
-        UpdateSourceModeToggleUi();
+        ApplySourceModeState(true);
+        SourceModeToggleButton.IsEnabled = false;
         UpdateOpenFileHistoryButtons();
         UpdateUndoRedoControls();
 
@@ -820,7 +821,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         ConfigureE2eFromArgs();
-        await InitializeWebViewAsync();
+        if (!_isSourceMode)
+        {
+            await InitializeWebViewAsync();
+        }
 
         var docsRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
@@ -846,7 +850,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _currentFilePath = startupPath;
         await LoadDocumentAsync(startupPath, createIfMissing: createIfMissing);
-        await WarmUpWebViewAsync();
+        if (!_isSourceMode)
+        {
+            await WarmUpWebViewAsync();
+        }
         await TryRestoreSnapshotOnStartupAsync();
 
         if (!_e2eMode)
@@ -2989,6 +2996,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _pendingOutlineScrollIndex = null;
         AttachFileWatcher(path);
         SetSourceEditorText(markdown, clearUndoStack: true);
+        if (_isSourceMode)
+        {
+            ShowLoading(false);
+        }
 
         QueueDocumentToWeb(markdown);
 

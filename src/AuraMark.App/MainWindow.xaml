@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:models="clr-namespace:AuraMark.App.Models"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        xmlns:app="clr-namespace:AuraMark.App"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="AuraMark"
         Icon="app.ico"
@@ -2009,18 +2009,17 @@
                         BorderBrush="#1A434C5E"
                         BorderThickness="0"
                         CornerRadius="0">
-                    <avalonEdit:TextEditor x:Name="SourceTextEditor"
-                                           AutomationProperties.AutomationId="SourceTextEditor"
-                                           ShowLineNumbers="True"
-                                           FontFamily="Cascadia Mono, Consolas"
-                                           FontSize="15"
-                                           Background="#F8FAFC"
-                                           Foreground="#434C5E"
-                                           BorderThickness="0"
-                                           Padding="14,12,14,20"
-                                           WordWrap="True"
-                                           HorizontalScrollBarVisibility="Auto"
-                                           VerticalScrollBarVisibility="Auto" />
+                    <ScrollViewer x:Name="SourceEditorScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Focusable="False"
+                                  Background="#F8FAFC">
+                        <Grid Width="{Binding ActualWidth, ElementName=SourceEditorScrollViewer}">
+                            <app:EditorSurfaceControl x:Name="SourceTextEditor"
+                                                      AutomationProperties.AutomationId="SourceTextEditor"
+                                                      Margin="0,0,0,24" />
+                        </Grid>
+                    </ScrollViewer>
                 </Border>
 
                 <Border x:Name="LoadingOverlay"

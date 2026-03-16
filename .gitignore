@@ -9,3 +9,10 @@
 **/*.log
 **/EditorView/
 artifacts/
+src/AuraMark.Core.Tests/obj.codex/CoreTests/Debug
+src/AuraMark.Core.Tests/obj.codex/CoreTests
+src/AuraMark.Core/obj.codex3/Core
+src/AuraMark.Core/obj.codex
+src/AuraMark.Core/obj_build
+src/AuraMark.App/obj_build
+src/AuraMark.App/obj_manual
