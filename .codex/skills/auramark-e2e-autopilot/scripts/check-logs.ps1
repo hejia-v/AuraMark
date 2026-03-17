@@ -19,8 +19,6 @@ $highPatterns = @(
     "NullReferenceException",
     "AccessViolationException",
     "The process cannot access the file",
-    "CoreWebView2",
-    "WebView2.*fail",
     "fatal"
 )
 
@@ -78,4 +76,3 @@ if (-not $report.ok) {
 }
 
 Write-Host "Log check ok. Report: $reportPath"
-

@@ -37,7 +37,7 @@
 
 1. `build` 失败：先修编译与依赖。
 2. `crash/startup`：先修启动崩溃与 fatal exception。
-3. `log high severity`：未处理异常、WebView2 初始化失败等。
+3. `log high severity`：未处理异常、编辑器初始化失败等。
 4. `state rule`：Loading/Error/Saved 反馈缺失。
 5. `layout/legibility`：遮挡、裁剪、对比度、字体可读性。
 6. `visual diff`：在规则通过时再评估是否为可接受变化。
@@ -52,7 +52,7 @@
 
 诊断：
 
-- 查 WPF 控件可见性与 Z-order：`MainWindow.xaml` 里 `LoadingOverlay` 是否在 `WebView2` 之上。
+- 查 WPF 控件可见性与 Z-order：`MainWindow.xaml` 里 `LoadingOverlay` 是否在编辑区之上。
 - 查触发逻辑：加载大文件时是否 `ShowLoading(true, ...)`。
 
 最小修复方向：
@@ -94,7 +94,7 @@
 诊断：
 
 - 查同步 IO：是否在 UI thread 做了大文件读取/写入。
-- 查 WebView2 事件：是否导致 re-entrancy 或频繁 destroy/create。
+- 查编辑器输入与保存事件：是否导致 re-entrancy 或频繁重复刷新。
 
 最小修复方向：
 

@@ -10,7 +10,7 @@ description: AuraMark 端到端自愈开发闭环（实现-编译-测试-启动-
 当用户要求对 `C:\Dev\AuraMark` 做端到端交付，并希望 Codex 自动完成以下闭环时使用本 skill：
 
 - 实现需求（feature/bugfix）
-- 自我编译（frontend + .NET）
+- 自我编译（.NET / WPF）
 - 自动化测试（unit/integration/E2E，如存在）
 - 自动启动应用并执行 UI 自动化场景
 - 自动截图并分析 UI/UX（规则化检查 + 视觉回归）
@@ -29,7 +29,7 @@ description: AuraMark 端到端自愈开发闭环（实现-编译-测试-启动-
 1. 仅面向仓库 `C:\Dev\AuraMark` 的开发与验证。
 2. 绝不无限循环：默认 `max_iterations = 4`（可配置 1-6）。
 3. 失败快速退出（fail-fast）场景：
-   - 构建工具不可用（`dotnet`/`npm` 等）
+   - 构建工具不可用（`dotnet` 等）
    - 应用无法启动或稳定崩溃
    - 关键验收路径阻断且不可自动修复
 4. “自动修复”只针对规则明确、可回归验证的问题；禁止为了过测试做投机改动。
@@ -41,7 +41,7 @@ description: AuraMark 端到端自愈开发闭环（实现-编译-测试-启动-
 
 - 需求目标与验收标准（Acceptance Criteria）
 - 目标配置：默认 `Debug`
-- 运行平台：Windows（WPF + WebView2）
+- 运行平台：Windows（WPF）
 - 测试现状：若仓库没有 test project，则先做 smoke/acceptance，再建议补测试基建
 
 ## 执行总流程（闭环）
@@ -50,7 +50,7 @@ description: AuraMark 端到端自愈开发闭环（实现-编译-测试-启动-
 
 1. 需求拆解：把需求转换为可验证的验收点与自动化检查点（checkpoints）。
 2. 最小实现：只改与验收点相关的代码。
-3. Build Gate：前端构建 + .NET 构建必须通过。
+3. Build Gate：.NET 构建必须通过。
 4. Test Gate：尽可能运行自动测试；若不存在测试，则运行 smoke/acceptance 脚本并补充可执行检查。
 5. Run Gate：启动 `AuraMark.App.exe` 并执行 UI 自动化场景（可先覆盖 PRD 6.3）。
 6. Evidence：采集 logs + screenshots，并归档到 run folder。
@@ -94,28 +94,22 @@ powershell -ExecutionPolicy Bypass -File "$skill\scripts\seed-baseline.ps1" -Run
 
 全部满足才算 pass：
 
-1. `npm` build 成功（若适用）。
-2. `dotnet build` 成功。
-3. 所有可运行的自动测试通过（若存在）。
-4. 日志无高危错误（见下方 Log Rules）。
-5. UI/UX 检查通过（规则检查 + 截图差异在阈值内）。
+1. `dotnet build` 成功。
+2. 所有可运行的自动测试通过（若存在）。
+3. 日志无高危错误（见下方 Log Rules）。
+4. UI/UX 检查通过（规则检查 + 截图差异在阈值内）。
 
 ## 基线命令（AuraMark 当前仓库）
 
 在 repo root 执行：
 
 ```powershell
-npm.cmd ci --prefix src/AuraMark.Web
-npm.cmd run build --prefix src/AuraMark.Web
-dotnet build src/AuraMark.sln -c Debug
+dotnet build src/AuraMark.sln -c Debug -p:UseSharedCompilation=false /nodeReuse:false
+dotnet test src/AuraMark.sln -c Debug -p:UseSharedCompilation=false /nodeReuse:false
 powershell -ExecutionPolicy Bypass -File .\scripts\acceptance.ps1 -Configuration Debug
 ```
 
-如果存在测试项目（未来引入 xUnit/NUnit/MSTest/E2E runner 等），追加：
-
-```powershell
-dotnet test src/AuraMark.sln -c Debug
-```
+如需避免共享编译导致的锁文件问题，继续保持 `-p:UseSharedCompilation=false /nodeReuse:false`。
 
 ## Log 规则（高危/中危）
 
@@ -123,7 +117,7 @@ dotnet test src/AuraMark.sln -c Debug
 
 - `Unhandled Exception`
 - `NullReferenceException` 等未处理异常
-- WebView2 初始化/加载的 fatal 错误
+- 编辑器初始化/加载的 fatal 错误
 - 启动失败、反复崩溃、卡死
 
 中危（需要解释并尽量修复）：

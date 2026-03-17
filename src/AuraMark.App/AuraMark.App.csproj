@@ -17,9 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AuraMark.Core\AuraMark.Core.csproj" />
-    <Reference Include="Microsoft.CodeAnalysis">
-      <HintPath>$(NuGetPackageRoot)microsoft.codeanalysis.common\4.13.0\lib\net8.0\Microsoft.CodeAnalysis.dll</HintPath>
-    </Reference>
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.13.0" />
   </ItemGroup>
 
 </Project>

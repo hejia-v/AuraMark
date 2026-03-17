@@ -15,7 +15,6 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction Sile
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptRoot "..")
 $srcRoot = Join-Path $repoRoot "src"
-$webRoot = Join-Path $srcRoot "AuraMark.Web"
 $solutionPath = Join-Path $srcRoot "AuraMark.sln"
 $outputRoot = Join-Path $repoRoot "artifacts"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -100,20 +99,14 @@ function Stop-RunningAuraMark {
 Stop-RunningAuraMark
 
 if (-not $SkipBuild) {
-    Invoke-Step -Name "npm_ci" -Command "npm.cmd ci" -WorkingDirectory $webRoot
-    Invoke-Step -Name "npm_build" -Command "npm.cmd run build" -WorkingDirectory $webRoot
-    Invoke-Step -Name "dotnet_build_$Configuration" -Command "dotnet build AuraMark.sln -c $Configuration" -WorkingDirectory $srcRoot
+    Invoke-Step -Name "dotnet_build_$Configuration" -Command "dotnet build AuraMark.sln -c $Configuration -p:UseSharedCompilation=false /nodeReuse:false" -WorkingDirectory $srcRoot
 }
 
 $appOutDir = Join-Path $srcRoot ("AuraMark.App\bin\{0}\net8.0-windows" -f $Configuration)
 $appExe = Join-Path $appOutDir "AuraMark.App.exe"
-$editorIndex = Join-Path $appOutDir "EditorView\index.html"
-$editorAssetsDir = Join-Path $appOutDir "EditorView\assets"
 
 Write-Section "Artifact Checks"
 Assert-PathExists -Path $appExe -Label "AuraMark executable"
-Assert-PathExists -Path $editorIndex -Label "EditorView index"
-Assert-PathExists -Path $editorAssetsDir -Label "EditorView assets folder"
 
 Write-Section "Fixture Generation"
 
